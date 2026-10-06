@@ -650,7 +650,10 @@ def test_the_reader_settings_fetch_nothing_and_load_both_lists():
     s = pv.reader_settings(None)
     assert s["verify"] == {"remote_manifest_fetch": False, "ocsp_fetch": False}
     assert s["core"]["allowed_network_hosts"] == []
-    assert s["trust"] == {"anchors": []}
+    assert s["trust"]["anchors"] == []
+    # c2pa-rs's own EKU list, the C2PA claim-signing EKU among them
+    assert s["trust"]["trust_config"].split() == list(pv.VALID_EKUS)
+    assert "1.3.6.1.4.1.62558.2.1" in pv.VALID_EKUS
     t = pv.TrustLists((_anchor("manifest", b"S", "s"), _anchor("tsa", b"T", "t")))
     kinds = [a["trust_kind"] for a in pv.reader_settings(t)["trust"]["anchors"]]
     assert kinds == ["manifest", "tsa"]
