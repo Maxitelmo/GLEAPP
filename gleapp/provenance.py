@@ -774,16 +774,35 @@ def configured_trust_lists() -> TrustLists:
     return trust_lists(**appconfig.get_c2pa_trust_lists())
 
 
+# The extended key usages c2pa-rs accepts on a signing certificate when it builds its
+# trust policy with its own defaults (sdk/src/crypto/cose/valid_eku_oids.cfg, c2pa-rs
+# 0.91.0). A reader opened from settings builds the policy without them unless
+# trust.trust_config names them, and then a certificate whose only EKU is C2PA's own
+# claim-signing one (C2PA 2.2 §14.4.1, the EKU the C2PA Trust List is for) is
+# reported signingCredential.invalid, "certificate missing required EKU", and the
+# manifest Invalid. Measured with a synthetic chain: Invalid without this, Valid
+# with it, and Trusted once its root is an anchor.
+VALID_EKUS = (
+    "1.3.6.1.5.5.7.3.4",            # id-kp-emailProtection
+    "1.3.6.1.5.5.7.3.36",           # id-kp-documentSigning
+    "1.3.6.1.5.5.7.3.8",            # id-kp-timeStamping
+    "1.3.6.1.5.5.7.3.9",            # id-kp-OCSPSigning
+    "1.3.6.1.4.1.311.76.59.1.9",    # Microsoft C2PA signing
+    "1.3.6.1.4.1.62558.2.1",        # c2pa-kp-claimSigning
+)
+
+
 def reader_settings(trust: TrustLists | None) -> dict:
     """The c2pa-python settings GLEAPP reads with: nothing fetched, nothing decoded
-    that would fetch, and the given anchors under ``trust.anchors`` (0.91 deprecates
-    trust_anchors / user_anchors and 0.92 removes them)."""
+    that would fetch, the EKUs c2pa-rs itself accepts (``VALID_EKUS``) and the given
+    anchors under ``trust.anchors`` (0.91 deprecates trust_anchors / user_anchors and
+    0.92 removes them)."""
     anchors = [{"trust_anchors": a.pem.decode("utf-8", "replace"), "trust_uri": a.uri,
                 "trust_kind": a.kind} for a in (trust.anchors if trust else ())]
     return {
         "verify": {"remote_manifest_fetch": False, "ocsp_fetch": False},
         "core": {"allowed_network_hosts": [], "decode_identity_assertions": False},
-        "trust": {"anchors": anchors},
+        "trust": {"anchors": anchors, "trust_config": "\n".join(VALID_EKUS) + "\n"},
     }
 
 
@@ -852,7 +871,8 @@ def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dic
     with no anchors at all."""
     path = str(path)
     record: dict[str, Any] = {"state": "not_checked", "codes": _codes(None),
-                              "ingredients": [], "xmp_dst": None}
+                              "active_dst": None, "dst_class": "none", "ingredients": [],
+                              "xmp_dst": None}
     try:
         blocks = scan_blocks(path)
     except OSError as exc:
