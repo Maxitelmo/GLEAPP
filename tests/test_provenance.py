@@ -163,7 +163,7 @@ def test_trusted_only_through_the_tsa_list_is_not_trusted():
     list vouches for time-stamping authorities, not for signers."""
     results = _results(success=["signingCredential.trusted"], trust_uri="gleapp:tsa")
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "digitalCapture"), "Trusted", results),
-                                  tsa_uri="gleapp:tsa")
+                                  tsa_uris=["gleapp:tsa"])
     assert rec["state"] == "valid_untrusted"
     assert "TSA" in rec["state_reason"]
 
@@ -539,19 +539,39 @@ def test_a_store_is_read_with_nothing_fetched_and_parsed(tmp_path, fake_c2pa):
     json.dumps(rec)
 
 
-def test_the_trust_lists_used_are_recorded(tmp_path, fake_c2pa):
-    lib = fake_c2pa(store=_store(_manifest(ACTIVE, "digitalCapture")))
+def _anchor(kind, body, label):
+    return pv.Anchor(kind, b"-----BEGIN CERTIFICATE-----\n" + body
+                     + b"\n-----END CERTIFICATE-----\n", label)
+
+
+def test_the_trust_lists_used_are_recorded_and_the_one_that_vouched_named(tmp_path, fake_c2pa):
+    signers = _anchor("manifest", b"A", "synthetic signer list")
+    extra = _anchor("manifest", b"C", "synthetic examiner list")
+    tsa = _anchor("tsa", b"B", "synthetic TSA list")
+    trust = pv.TrustLists((signers, tsa, extra))
+    results = _results(success=["signingCredential.trusted"], trust_uri=extra.uri)
+    lib = fake_c2pa(store=_store(_manifest(ACTIVE, "digitalCapture"), "Trusted", results))
     p = tmp_path / "g.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    trust = pv.TrustLists(b"-----BEGIN CERTIFICATE-----\nA\n-----END CERTIFICATE-----\n",
-                          b"-----BEGIN CERTIFICATE-----\nB\n-----END CERTIFICATE-----\n",
-                          "synthetic")
     rec = pv.read_provenance(p, trust=trust)
-    assert rec["trust_list_sha256"] == {"signer": trust.signer_sha256, "tsa": trust.tsa_sha256}
-    assert rec["trust_list_source"] == "synthetic"
+    assert rec["state"] == "trusted"
+    assert rec["trust_lists"] == [a.describe() for a in (signers, tsa, extra)]
+    assert rec["trusted_by"] == "synthetic examiner list"
+    assert rec["trust_list_sha256"] == extra.sha256
     anchors = lib.settings[0]["trust"]["anchors"]
     assert [(a["trust_kind"], a["trust_uri"]) for a in anchors] == [
-        ("manifest", trust.signer_uri), ("tsa", trust.tsa_uri)]
+        ("manifest", signers.uri), ("tsa", tsa.uri), ("manifest", extra.uri)]
+
+
+def test_a_signer_trusted_through_a_tsa_anchor_is_not_trusted(tmp_path, fake_c2pa):
+    tsa = _anchor("tsa", b"B", "synthetic TSA list")
+    results = _results(success=["signingCredential.trusted"], trust_uri=tsa.uri)
+    fake_c2pa(store=_store(_manifest(ACTIVE, "digitalCapture"), "Trusted", results))
+    p = tmp_path / "g.jpg"
+    p.write_bytes(_jpeg(_app11_store()))
+    rec = pv.read_provenance(p, trust=pv.TrustLists((tsa,)))
+    assert rec["state"] == "valid_untrusted"
+    assert rec["trusted_by"] == "synthetic TSA list"
 
 
 def test_a_remote_manifest_is_not_fetched(tmp_path, fake_c2pa):
@@ -631,7 +651,7 @@ def test_the_reader_settings_fetch_nothing_and_load_both_lists():
     assert s["verify"] == {"remote_manifest_fetch": False, "ocsp_fetch": False}
     assert s["core"]["allowed_network_hosts"] == []
     assert s["trust"] == {"anchors": []}
-    t = pv.TrustLists(b"S", b"T", "x")
+    t = pv.TrustLists((_anchor("manifest", b"S", "s"), _anchor("tsa", b"T", "t")))
     kinds = [a["trust_kind"] for a in pv.reader_settings(t)["trust"]["anchors"]]
     assert kinds == ["manifest", "tsa"]
 

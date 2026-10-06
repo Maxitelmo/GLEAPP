@@ -39,7 +39,7 @@ import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Iterable
 
 STATES = ("absent", "malformed", "invalid", "valid_untrusted", "trusted", "not_checked")
 STATE_LABELS = {
@@ -176,7 +176,7 @@ def _blocking(failures: list[str]) -> list[str]:
 
 
 def _state(validation_state: Any, success: list[str], failures: list[str],
-           trust_list_uri: str | None, tsa_uri: str | None) -> tuple[str, str | None]:
+           trust_list_uri: str | None, tsa_uris: frozenset) -> tuple[str, str | None]:
     """(state, reason). ``failures`` is the current validation only: the active
     manifest's and the ingredient deltas', never what an ingredient recorded when it
     was signed."""
@@ -196,7 +196,7 @@ def _state(validation_state: Any, success: list[str], failures: list[str],
     if vs == "trusted":
         # c2pa-rs 0.91.0 also trusts a signer that chains to an anchor loaded as a
         # time-stamping authority; the TSA list does not vouch for signers.
-        if tsa_uri and trust_list_uri == tsa_uri:
+        if trust_list_uri and trust_list_uri in tsa_uris:
             return "valid_untrusted", ("signer chains only to the TSA trust list, "
                                        "which does not vouch for signers")
         return "trusted", None
@@ -261,7 +261,7 @@ def _delta_failures(results: dict, manifest_label: str | None, ingredient: dict)
     return out
 
 
-def _ingredients(store: dict, manifest: dict, results: dict, tsa_uri: str | None,
+def _ingredients(store: dict, manifest: dict, results: dict, tsa_uris: frozenset,
                  depth: int, seen: set) -> list[dict]:
     out = []
     for ing in manifest.get("ingredients") or []:
@@ -278,14 +278,14 @@ def _ingredients(store: dict, manifest: dict, results: dict, tsa_uri: str | None
         failures = [c["code"] for c in recorded["failure"]]
         failures += _delta_failures(results, manifest.get("label"), ing)
         success = [c["code"] for c in recorded["success"]]
-        state, reason = _state(None, success, failures, None, tsa_uri)
+        state, reason = _state(None, success, failures, None, tsa_uris)
         dst, _action = _dst(child)
         entry.update(dst=dst, dst_class=classify_dst(dst), state=state,
                      signer=_signer(child))
         if reason:
             entry["state_reason"] = reason
         if depth < MAX_DEPTH and label not in seen:
-            nested = _ingredients(store, child, {}, tsa_uri, depth + 1, seen | {label})
+            nested = _ingredients(store, child, {}, tsa_uris, depth + 1, seen | {label})
             if nested:
                 entry["ingredients"] = nested
         elif label in seen or depth >= MAX_DEPTH:
@@ -295,10 +295,12 @@ def _ingredients(store: dict, manifest: dict, results: dict, tsa_uri: str | None
     return out
 
 
-def parse_manifest_store(store: dict, *, tsa_uri: str | None = None) -> dict:
+def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
     """The provenance record of a manifest store, as c2pa-python's ``Reader.json()``
-    returns it. Pure: no file, no library. ``tsa_uri`` is the trust_uri the TSA list
-    was loaded under, so a Trusted result that rests on it alone can be told apart."""
+    returns it. Pure: no file, no library. ``tsa_uris`` are the trust_uri values the
+    time-stamping anchors were loaded under, so a Trusted result that rests on one of
+    them can be told apart."""
+    tsa_uris = frozenset(tsa_uris)
     manifests = store.get("manifests") or {}
     label = store.get("active_manifest")
     manifest = manifests.get(label) if label else None
@@ -315,7 +317,7 @@ def parse_manifest_store(store: dict, *, tsa_uri: str | None = None) -> dict:
     success = [c["code"] for c in codes["success"]]
     trust_list_uri = results.get("trustListUri")
     state, reason = _state(store.get("validation_state"), success, failures,
-                           trust_list_uri, tsa_uri)
+                           trust_list_uri, tsa_uris)
     dst, action = _dst(manifest)
     record: dict[str, Any] = {
         "state": state,
@@ -331,7 +333,7 @@ def parse_manifest_store(store: dict, *, tsa_uri: str | None = None) -> dict:
         # to its signer; it is recorded, and marked so
         "dst_signed_valid": bool(dst) and state in ("valid_untrusted", "trusted"),
         "hard_binding_mismatch": any(c in HARD_BINDING_MISMATCH for c in failures),
-        "ingredients": _ingredients(store, manifest, results, tsa_uri, 1, {label}),
+        "ingredients": _ingredients(store, manifest, results, tsa_uris, 1, {label}),
         "spec_version": results.get("specVersion"),
         "trust_list_uri": trust_list_uri,
         "timestamp_trust_list_uri": results.get("timestampTrustListUri"),
@@ -672,43 +674,112 @@ def _remote_reference(xmp: list[bytes]) -> str | None:
 
 # -- the reader -----------------------------------------------------------------------
 
+TRUST_DIR = Path(__file__).with_name("trust")
+
+
+class TrustListError(ValueError):
+    """A trust list the examiner configured could not be used."""
+
+
+@dataclass(frozen=True)
+class Anchor:
+    """One PEM list of trust anchors. ``kind`` is c2pa-rs's trust_kind: "manifest"
+    for claim signers, "tsa" for time-stamping authorities. ``uri`` goes to the
+    reader as the list's trust_uri, and the reader names the one a trusted signer
+    chained to in validation_results.trustListUri."""
+    kind: str
+    pem: bytes
+    label: str
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.pem).hexdigest()
+
+    @property
+    def uri(self) -> str:
+        return f"gleapp:{self.kind}:sha256:{self.sha256}"
+
+    def describe(self) -> dict:
+        return {"kind": self.kind, "label": self.label, "sha256": self.sha256}
+
+
 @dataclass(frozen=True)
 class TrustLists:
-    """PEM trust anchors for signers and for time-stamping authorities, and where they
-    came from. ``uri`` values go to the reader as trust_uri and come back in
-    validation_results, which is how a record says which list was used."""
-    signer_pem: bytes | None = None
-    tsa_pem: bytes | None = None
-    source: str = ""
+    """The anchors a file is read with."""
+    anchors: tuple[Anchor, ...] = ()
+
+    def by_uri(self, uri: str | None) -> Anchor | None:
+        return next((a for a in self.anchors if uri and a.uri == uri), None)
 
     @property
-    def signer_sha256(self) -> str | None:
-        return hashlib.sha256(self.signer_pem).hexdigest() if self.signer_pem else None
+    def tsa_uris(self) -> frozenset:
+        return frozenset(a.uri for a in self.anchors if a.kind == "tsa")
 
-    @property
-    def tsa_sha256(self) -> str | None:
-        return hashlib.sha256(self.tsa_pem).hexdigest() if self.tsa_pem else None
 
-    @property
-    def signer_uri(self) -> str | None:
-        return f"gleapp:signer-trust-list:sha256:{self.signer_sha256}" if self.signer_pem else None
+def _pem_file(path: str | Path, what: str) -> bytes:
+    name = Path(path).name
+    try:
+        data = Path(path).read_bytes()
+    except OSError as exc:
+        raise TrustListError(f"{what} {name}: {exc.strerror or type(exc).__name__}") from None
+    if b"-----BEGIN CERTIFICATE-----" not in data:
+        raise TrustListError(f"{what} {name}: no PEM certificate in it")
+    return data
 
-    @property
-    def tsa_uri(self) -> str | None:
-        return f"gleapp:tsa-trust-list:sha256:{self.tsa_sha256}" if self.tsa_pem else None
+
+def _bundled() -> dict[str, Anchor]:
+    manifest = json.loads((TRUST_DIR / "trust_lists.json").read_text(encoding="utf-8"))
+    where = f"bundled, conformance-public {manifest['commit'][:7]}"
+    names = {"manifest": "C2PA Trust List", "tsa": "C2PA TSA Trust List"}
+    return {f["kind"]: Anchor(f["kind"], (TRUST_DIR / f["name"]).read_bytes(),
+                              f"{names[f['kind']]} ({where})")
+            for f in manifest["files"]}
+
+
+def bundled_trust_lists() -> TrustLists:
+    """The C2PA Trust List and C2PA TSA Trust List GLEAPP carries (gleapp/trust)."""
+    b = _bundled()
+    return TrustLists((b["manifest"], b["tsa"]))
+
+
+def trust_lists(*, c2pa_list: str | Path | None = None, c2pa_tsa_list: str | Path | None = None,
+                signer_anchors: str | Path | None = None,
+                tsa_anchors: str | Path | None = None) -> TrustLists:
+    """The anchors to read with. C2PA 2.2 §14.4.1 and §14.4.2: a validator's lists
+    include the C2PA Trust List and the C2PA TSA Trust List, and should let the user
+    add anchors of their own. So the examiner's anchors (``signer_anchors``,
+    ``tsa_anchors``) are added to C2PA's, never put in their place; what can be put
+    in place of the copies GLEAPP carries is a newer copy of C2PA's own lists
+    (``c2pa_list``, ``c2pa_tsa_list``). Each is named by its file name, never its
+    path, and every one has to hold a PEM certificate."""
+    b = _bundled()
+    anchors = []
+    for kind, given, name in (("manifest", c2pa_list, "C2PA Trust List"),
+                              ("tsa", c2pa_tsa_list, "C2PA TSA Trust List")):
+        if given:
+            anchors.append(Anchor(kind, _pem_file(given, name),
+                                  f"{name} (examiner copy: {Path(given).name})"))
+        else:
+            anchors.append(b[kind])
+    for kind, given, name in (("manifest", signer_anchors, "examiner signer anchors"),
+                              ("tsa", tsa_anchors, "examiner TSA anchors")):
+        if given:
+            anchors.append(Anchor(kind, _pem_file(given, name), f"{name}: {Path(given).name}"))
+    return TrustLists(tuple(anchors))
+
+
+def configured_trust_lists() -> TrustLists:
+    """The anchors the examiner set in the app config, or the bundled lists."""
+    from . import appconfig  # pylint: disable=import-outside-toplevel
+    return trust_lists(**appconfig.get_c2pa_trust_lists())
 
 
 def reader_settings(trust: TrustLists | None) -> dict:
     """The c2pa-python settings GLEAPP reads with: nothing fetched, nothing decoded
-    that would fetch, and the given trust lists under ``trust.anchors`` (0.91 deprecates
+    that would fetch, and the given anchors under ``trust.anchors`` (0.91 deprecates
     trust_anchors / user_anchors and 0.92 removes them)."""
-    anchors = []
-    if trust and trust.signer_pem:
-        anchors.append({"trust_anchors": trust.signer_pem.decode("utf-8", "replace"),
-                        "trust_uri": trust.signer_uri, "trust_kind": "manifest"})
-    if trust and trust.tsa_pem:
-        anchors.append({"trust_anchors": trust.tsa_pem.decode("utf-8", "replace"),
-                        "trust_uri": trust.tsa_uri, "trust_kind": "tsa"})
+    anchors = [{"trust_anchors": a.pem.decode("utf-8", "replace"), "trust_uri": a.uri,
+                "trust_kind": a.kind} for a in (trust.anchors if trust else ())]
     return {
         "verify": {"remote_manifest_fetch": False, "ocsp_fetch": False},
         "core": {"allowed_network_hosts": [], "decode_identity_assertions": False},
@@ -776,7 +847,9 @@ def _scrub(text: str, path: str) -> str:
 
 
 def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dict:
-    """The provenance record of one file, JSON-serializable. Never writes to ``path``."""
+    """The provenance record of one file, JSON-serializable. Never writes to ``path``.
+    ``trust`` defaults to ``configured_trust_lists()``; pass ``TrustLists()`` to read
+    with no anchors at all."""
     path = str(path)
     record: dict[str, Any] = {"state": "not_checked", "codes": _codes(None),
                               "ingredients": [], "xmp_dst": None}
@@ -791,16 +864,22 @@ def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dic
     remote = _remote_reference(blocks.xmp)
     c2pa, why = _library()
     record["library_version"] = library_version() if c2pa else None
-    record["trust_list_sha256"] = ({"signer": trust.signer_sha256, "tsa": trust.tsa_sha256}
-                                   if trust and (trust.signer_pem or trust.tsa_pem) else None)
-    if trust and trust.source:
-        record["trust_list_source"] = trust.source
     if c2pa is None:
         record["state_reason"] = why
         return record
     if blocks.known and not blocks.stores and not remote:
         record["state"] = "absent"      # the whole container was read and holds none
         return record
+    if trust is None:
+        try:
+            trust = configured_trust_lists()
+        except TrustListError as exc:
+            # reading with the bundled lists instead would record a result the
+            # examiner did not ask for
+            record["state_reason"] = "C2PA not checked: trust list could not be read: " + \
+                _scrub(str(exc), path)
+            return record
+    record["trust_lists"] = [a.describe() for a in trust.anchors]
     try:
         ctx = c2pa.Context(settings=c2pa.Settings.from_dict(reader_settings(trust)))
         with open(path, "rb") as fh:
@@ -824,6 +903,8 @@ def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dic
     except Exception as exc:  # noqa: BLE001 - recorded, never raised into the pipeline
         record["state_reason"] = "reader error: " + _scrub(f"{type(exc).__name__}: {exc}", path)
         return record
-    parsed = parse_manifest_store(store, tsa_uri=trust.tsa_uri if trust else None)
-    record.update(parsed)
+    record.update(parse_manifest_store(store, tsa_uris=trust.tsa_uris))
+    vouched = trust.by_uri(record.get("trust_list_uri"))
+    record["trusted_by"] = vouched.label if vouched else None
+    record["trust_list_sha256"] = vouched.sha256 if vouched else None
     return record

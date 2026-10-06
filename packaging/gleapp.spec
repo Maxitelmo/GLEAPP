@@ -25,6 +25,7 @@ datas = [
     (str(PKG / "web" / "templates"), "gleapp/web/templates"),
     (str(PKG / "web" / "static"), "gleapp/web/static"),
     (str(PKG / "models"), "gleapp/models"),
+    (str(PKG / "trust"), "gleapp/trust"),
 ]
 binaries = []
 hiddenimports = ["gleapp.desktop", "gleapp.cli", "gleapp.web.app", "gleapp.projectvic",
