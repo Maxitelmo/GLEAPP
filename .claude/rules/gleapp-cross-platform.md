@@ -976,3 +976,50 @@ make readers wait on the real case. What they wait for is a context being worked
 and a page of the list being read, each as long as its longest statement. A read
 connection would remove that and change what a reader sees (see the section before this
 one); making those statements cheaper removes it without that.
+
+## C2PA reading is an optional extra, and no build carries it
+
+`gleapp/provenance.py` reads Content Credentials with c2pa-python, declared as the
+`[provenance]` extra (`c2pa-python>=0.38,<0.39`), never in `requirements.txt`. Checked on
+2026-10-06 with pip 26.2.1 (`--dry-run --only-binary=:all:`, each platform's full tag set,
+CPython 3.10 to 3.14):
+
+| platform | c2pa-python 0.38.0 | cryptography it gets from wheels |
+| --- | --- | --- |
+| Windows x64 | wheel | 50.0.2 |
+| Windows ARM64 | wheel | 46.0.3 on 3.11 to 3.14; 3.10 does not resolve (cffi has no cp310 win_arm64 wheel) |
+| macOS arm64 | wheel | 50.0.2 |
+| macOS x86_64 | wheel | 48.0.1 |
+| manylinux x86_64, aarch64 | wheel | 50.0.2 |
+
+c2pa-python's wheels are `py3-none-<platform>` and carry a native library (23.3 MB in the
+manylinux x86_64 one). Its declared dependency `cryptography` is the gap: 50.0.2 has no
+Intel macOS or win_arm64 wheel, so a plain `pip install` builds it from source there
+(Rust and OpenSSL) unless given `--prefer-binary`, which takes the versions above. Nothing
+the app imports needs it: `import c2pa` loads `c2pa`, `c2pa.c2pa` and `c2pa.lib`, standard
+library and ctypes only, and reading worked with cryptography, requests and toml blocked
+by a meta-path hook. Installed, cryptography does change one thing in a source run: pypdf
+prefers it over pycryptodome for encrypted PDFs.
+
+**Why no build carries it.** The 0.38.0 wheels hold no licence text (its pyproject sets
+`license-files = []`; LICENSE-MIT and LICENSE-APACHE, "(c) Copyright 2020 Adobe", are only
+in the sdist). The native library is c2pa-rs 0.91.0 (commit e7cc666c), byte-identical to
+the c2pa-rs release asset, built without a committed lockfile, and upstream publishes no
+third-party notice, SBOM or Cargo.lock for it. A lock reconstructed from the release date
+matched all 156 crate versions the seven shipped libraries name, but it is a
+reconstruction, not a record, and its 290-odd crates include CDLA-Permissive-2.0 data
+(webpki-roots), Unicode-3.0, ISC and BSD-3-Clause, six with no licence text in the crate.
+`collect_all("c2pa")` would also pull `c2pa.build`, which imports requests: that brings
+certifi (MPL-2.0) and cryptography with a static OpenSSL 4.0.3, and about 293 MB of
+`.pdb`/`.lib`/`.exp` build files on Windows. So the spec excludes `c2pa` (PyInstaller
+follows the import inside a function), and the frozen app records "C2PA not checked:
+library unavailable". `tests/test_c2pa_packaging.py` pins the extra, its absence from the
+requirements, the exclude and the CI split.
+
+**CI runs both paths.** The Linux `pytest` job and `windows-smoke` install `.[dev,provenance]`
+so the tests that sign synthetic fixtures with the real library run; the runtime-contract
+matrix does not, so every Python from 3.10 to 3.14 runs the suite without it.
+
+**The pin is below 0.39 on purpose.** c2pa-rs 0.91.0 deprecates `trust.trust_anchors` and
+`trust.user_anchors` ("Will be removed in 0.92.0 (scheduled for mid-November 2026)"); GLEAPP
+uses `trust.anchors`. Raise the pin only with the reader's tests run against the new minor.
