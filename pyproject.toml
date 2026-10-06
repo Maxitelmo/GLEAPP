@@ -54,6 +54,14 @@ dependencies = [
 # (.claude/rules/gleapp-cross-platform.md).
 dev = ["pytest>=8.0", "piexif>=1.1", "pillow-heif>=1.2.1"]
 desktop = ["pywebview>=5.0"]
+# Reads and validates C2PA Content Credentials (gleapp/provenance.py). An extra, not a
+# requirement: its native library is built from c2pa-rs, and upstream publishes no
+# lockfile or third-party notice for it, so no build carries it (packaging/gleapp.spec
+# excludes it). Without it GLEAPP records "C2PA not checked: library unavailable".
+# Below 0.39: c2pa-rs 0.92 removes the trust settings 0.91 deprecated. Wheels for every
+# platform GLEAPP ships, but its dependency cryptography has none for Intel macOS or
+# Windows on ARM in 50.0.2 (.claude/rules/gleapp-cross-platform.md).
+provenance = ["c2pa-python>=0.38,<0.39"]
 build = ["pywebview>=5.0", "pyinstaller==6.22.2", "dmgbuild==1.6.7; sys_platform == 'darwin'"]
 
 [project.scripts]
