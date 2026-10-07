@@ -44,7 +44,9 @@ FIELDS = (
     "hashset_hit, hashset_cat, hashset_kind, hashset_sources, hashset_mask, "
     "stack_id, vstack_id, cluster_id, thumb, error, "
     "media_id, orig_name, orig_path, mime, vic_flags, alt_paths, recorded_times, origin, "
-    "cache_info"
+    "cache_info, c2pa_state, c2pa_dst_class, c2pa_signer"
+    # c2pa_info, the whole provenance record, comes with /api/file/<id> only: it can
+    # be kilobytes, and a page of the list is up to 5,000 rows
 )
 
 # columns the details list-view may sort and filter on (must all be in FIELDS)
@@ -55,6 +57,7 @@ LIST_COLS = {
     "gps_lon", "faces", "skin_ratio", "category", "triage", "notes",
     "hashset_hit", "hashset_kind", "hashset_cat", "stack_id", "vstack_id",
     "cluster_id", "media_id", "error", "reviewed", "recorded_times", "origin",
+    "c2pa_state", "c2pa_dst_class", "c2pa_signer",
 }
 
 
@@ -1289,6 +1292,18 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             # filter silently returns the whole case. "deleted" was missing.
             if q.get("origin") in ORIGINS:
                 eq("origin", q["origin"])
+            # Content Credentials as the file declares them; an unknown value is
+            # ignored, as for origin. "any" is a manifest the reader got to read.
+            c2pa_q = q.get("c2pa")
+            if c2pa_q in provenance.STATES:
+                eq("c2pa_state", c2pa_q)
+            elif c2pa_q == "any":
+                where.append("c2pa_state IN ('malformed', 'invalid', 'valid_untrusted', "
+                             "'trusted')")
+            elif c2pa_q == "unread":
+                where.append("c2pa_state IS NULL AND kind IN ('image', 'video')")
+            if q.get("c2pa_dst") in provenance.DST_CLASSES:
+                eq("c2pa_dst_class", q["c2pa_dst"])
             if q.get("in_archive") == "1":
                 where.append(_pulled_from_sql(_archive_sql))
             if q.get("in_document") == "1":
@@ -1357,6 +1372,8 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                         f"COALESCE(NULLIF(orig_path, ''), {_rp})",
                         "alt_paths",            # the other storage views a file sat under
                         "cache_info",           # an app cache's key, often the URL it came from
+                        "c2pa_signer",          # who signed its Content Credentials
+                        "c2pa_info",            # their claim generator, ingredients, codes
                         "camera", "notes", "mime", "source", "created_dt",
                         "reviewed_by", "hashset_hit", "error",
                         "md5", "sha1", "sha256", "phash")
@@ -1509,6 +1526,9 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             d["container"] = _container_info(case, r)
         if r["kind"] == "archive":
             d["members"] = _member_counts(case, r)
+        if r["kind"] in ("image", "video"):
+            d["c2pa_rows"] = provenance.describe(provenance.load(r["c2pa_info"]))
+            d["c2pa_caveat"] = provenance.CAVEAT
         return jsonify(d)
 
     @app.get("/api/similar/<int:file_id>")
