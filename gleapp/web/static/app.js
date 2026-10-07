@@ -247,6 +247,8 @@ function filterParams() {
   if ($("#fflag").value !== "any") p.set("flag", $("#fflag").value);
   if ($("#fsrc").value) p.set("source", $("#fsrc").value);
   if ($("#forigin").value) p.set("origin", $("#forigin").value);
+  if ($("#fc2pa").value) p.set("c2pa", $("#fc2pa").value);
+  if ($("#fc2padst").value) p.set("c2pa_dst", $("#fc2padst").value);
   if ($("#finarch").checked) p.set("in_archive", "1");
   if ($("#findoc").checked) p.set("in_document", "1");
   if ($("#fdup").value) p.set("hasdup", $("#fdup").value);
@@ -631,6 +633,28 @@ const ORIGIN_SHORT = {
   carve: "Carved",
 };
 
+// Content Credentials, as declared: the state of the file's credentials and the class
+// of the source type its manifest declares. Same keys as provenance.STATES and
+// provenance.DST_CLASSES; the short forms fit the 130px enum column.
+const C2PA_STATE_SHORT = {
+  absent: "None",
+  malformed: "Malformed",
+  invalid: "Invalid",
+  valid_untrusted: "Valid, untrusted",
+  trusted: "Trusted",
+  not_checked: "Not checked",
+};
+const C2PA_DST_LABEL = {
+  generative_ai: "Generative AI",
+  ai_composite: "Composite with AI",
+  algorithmic: "Algorithmic",
+  capture: "Capture",
+  screen: "Screen capture",
+  human_edit: "Human edits",
+  other: "Other",
+  none: "None declared",
+};
+
 const LIST_DEFS = [
   { key: "", label: "", type: "", get: () => "", thumb: true },
   { key: "id", label: "ID", type: "num", get: f => f.id },
@@ -654,6 +678,13 @@ const LIST_DEFS = [
   // this is off by default and turned on from the column picker.
   { key: "origin", label: "How recovered", type: "enum", get: f => ORIGIN_SHORT[f.origin] || "",
     options: () => Object.entries(ORIGIN_SHORT).map(([value, label]) => ({ value, label })) },
+  { key: "c2pa_state", label: "Content Credentials", type: "enum",
+    get: f => C2PA_STATE_SHORT[f.c2pa_state] || "",
+    options: () => Object.entries(C2PA_STATE_SHORT).map(([value, label]) => ({ value, label })) },
+  { key: "c2pa_dst_class", label: "Declared source type", type: "enum",
+    get: f => C2PA_DST_LABEL[f.c2pa_dst_class] || "",
+    options: () => Object.entries(C2PA_DST_LABEL).map(([value, label]) => ({ value, label })) },
+  { key: "c2pa_signer", label: "C2PA signer", type: "text", get: f => f.c2pa_signer || "" },
   { key: "kind", label: "Type", type: "enum", get: f => f.kind || "",
     options: [{ value: "image", label: "image" }, { value: "video", label: "video" },
               { value: "other", label: "other" }] },
@@ -1624,6 +1655,11 @@ async function showMeta(id) {
           title="The Exif reading the Project VIC record carries for the file it describes. It is shown as recorded and is not this file's own metadata; a location in it is not drawn on any map.">VIC Exif, as recorded (${vic.exif.length})</summary>
         <table>${vic.exif.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v ?? "")}</td></tr>`).join("")}</table>
       </details>` : ""}
+      ${f.c2pa_rows ? `<details style="margin-top:8px" ${f.c2pa_state && f.c2pa_state !== "absent" ? "open" : ""}>
+        <summary class="muted" title="${esc(f.c2pa_caveat || "")}">Content Credentials: ${esc(C2PA_STATE_SHORT[f.c2pa_state] || "not read yet")}</summary>
+        <table>${f.c2pa_rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td style="white-space:pre-line">${esc(v ?? "")}</td></tr>`).join("")}</table>
+        <div class="fnote">${esc(f.c2pa_caveat || "")}</div>
+      </details>` : ""}
 
       <div class="muted" style="margin-top:8px">Notes <span id="mNoteState" class="muted" style="font-size:11px"></span></div>
       <textarea id="mNotes" placeholder="autosaves as you type">${esc(f.notes || "")}</textarea>
@@ -2303,7 +2339,7 @@ document.addEventListener("keydown", e => {
 /* ---------- filter wiring ---------- */
 // #fsort has its own handler (it maps to state.sortCol/Dir), so it's not here
 ["#fq", "#fkind", "#fcat", "#fflag", "#fsrc", "#forigin", "#finarch", "#findoc", "#fdup", "#ffaces", "#fgps",
- "#fhit", "#fhashset", "#fhidegood", "#ferr", "#fskin", "#fcollapse", "#fdfrom", "#fdto", "#fdnone"].forEach(s => {
+ "#fhit", "#fhashset", "#fhidegood", "#ferr", "#fskin", "#fcollapse", "#fdfrom", "#fdto", "#fdnone", "#fc2pa", "#fc2padst"].forEach(s => {
   const el = $(s);
   el.addEventListener(s === "#fq" ? "input" : "change", debounce(reload, 250));
 });
@@ -2323,6 +2359,7 @@ const SEC_ACTIVE = {
   date:   () => !!($("#fdfrom").value || $("#fdto").value) || $("#fdnone").checked,
   loc:    () => $("#fgps").checked,
   carve:  () => !!$("#forigin").value,
+  c2pa:   () => !!$("#fc2pa").value || !!$("#fc2padst").value,
   arch:   () => $("#finarch").checked || $("#findoc").checked,
 };
 // Each active filter drives a removable chip under "N filters" - "Clear"
@@ -2349,6 +2386,12 @@ const FILTER_DEFS = [
   { active: () => !!$("#forigin").value,
     label: () => `How recovered: ${esc($("#forigin").selectedOptions[0].textContent)}`,
     clear: () => { $("#forigin").value = ""; } },
+  { active: () => !!$("#fc2pa").value,
+    label: () => `Content Credentials: ${esc($("#fc2pa").selectedOptions[0].textContent)}`,
+    clear: () => { $("#fc2pa").value = ""; } },
+  { active: () => !!$("#fc2padst").value,
+    label: () => `Declared source type: ${esc($("#fc2padst").selectedOptions[0].textContent)}`,
+    clear: () => { $("#fc2padst").value = ""; } },
   { active: () => !!$("#fhashset").value,
     label: () => `Known hashes: ${esc($("#fhashset").selectedOptions[0].textContent)}`,
     clear: () => { $("#fhashset").value = ""; } },
@@ -2603,6 +2646,7 @@ $("#btnClearFilters").onclick = () => {
   $("#fflag").value = "any";
   $("#fsrc").value = "";
   $("#forigin").value = "";
+  $("#fc2pa").value = ""; $("#fc2padst").value = "";
   $("#finarch").checked = false;
   $("#findoc").checked = false;
   $("#fdup").value = "";

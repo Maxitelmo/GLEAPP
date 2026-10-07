@@ -52,8 +52,29 @@ STATE_LABELS = {
     "trusted": "Trusted",
     "not_checked": "Not checked",
 }
+# The same states, short enough for a list column (16 characters at most).
+STATE_SHORT = {
+    "absent": "None",
+    "malformed": "Malformed",
+    "invalid": "Invalid",
+    "valid_untrusted": "Valid, untrusted",
+    "trusted": "Trusted",
+    "not_checked": "Not checked",
+}
 DST_CLASSES = ("generative_ai", "ai_composite", "algorithmic", "capture", "screen",
                "human_edit", "other", "none")
+# What each class of a declared digital source type is called on a screen or in a
+# report. They name the vocabulary group of what the file declares, nothing more.
+DST_CLASS_LABELS = {
+    "generative_ai": "Generative AI",
+    "ai_composite": "Composite with AI",
+    "algorithmic": "Algorithmic",
+    "capture": "Capture",
+    "screen": "Screen capture",
+    "human_edit": "Human edits",
+    "other": "Other",
+    "none": "None declared",
+}
 UNSIGNED = "unsigned declaration"
 NOT_CHECKED_LIBRARY = "C2PA not checked: library unavailable"
 REMOTE_NOT_FETCHED = "remote manifest not fetched (offline)"
@@ -1084,3 +1105,89 @@ def columns(record: dict) -> dict:
 
 EMPTY_COLUMNS = {"c2pa_state": None, "c2pa_dst_class": None, "c2pa_signer": None,
                  "c2pa_info": None}
+
+
+# -- words for the surfaces -----------------------------------------------------------
+
+def _term(uri: str) -> str:
+    return str(uri).rstrip("/").rsplit("/", 1)[-1]
+
+
+def _ingredient_lines(ingredients: list, depth: int = 0) -> list[str]:
+    lines = []
+    for ing in ingredients or []:
+        dst = ing.get("dst")
+        what = (f"{_term(dst)} ({DST_CLASS_LABELS.get(ing.get('dst_class'), '')})"
+                if dst else "no source type declared")
+        state = STATE_SHORT.get(ing.get("state"), ing.get("state") or "")
+        lines.append(f"{'  ' * depth}{ing.get('title') or 'untitled'}: {what}; {state}")
+        lines += _ingredient_lines(ing.get("ingredients") or [], depth + 1)
+    return lines
+
+
+def describe(record: dict | None) -> list[tuple[str, str]]:
+    """(label, value) rows for a record, in the words every surface uses: what the
+    file declares, who signed it, whether the signature validates and whether the
+    signer is on a trust list GLEAPP holds. Never a finding about the content."""
+    if not record:
+        return [("State", "Not read yet")]
+    rows: list[tuple[str, str]] = []
+    label = STATE_LABELS.get(record.get("state"), record.get("state") or "")
+    reason = record.get("state_reason")
+    rows.append(("State", f"{label}: {reason}" if reason else label))
+    if signer_text(record.get("signer")):
+        rows.append(("Signer", signer_text(record.get("signer"))))
+    if record.get("signed_time"):
+        rows.append(("Time-stamp", str(record["signed_time"])))
+    if record.get("claim_generator"):
+        rows.append(("Claim generator", str(record["claim_generator"])))
+    if record.get("active_dst"):
+        text = (f"{_term(record['active_dst'])} "
+                f"({DST_CLASS_LABELS.get(record.get('dst_class'), '')})")
+        if not record.get("dst_signed_valid"):
+            text += ", not backed by a valid signature"
+        rows.append(("Declared source type", text))
+    if record.get("trusted_by"):
+        rows.append(("Trusted by", str(record["trusted_by"])))
+    if record.get("hard_binding_mismatch"):
+        rows.append(("Hard binding", "does not match: the bytes changed after signing"))
+    failures = [c.get("code") for c in (record.get("codes") or {}).get("failure", [])
+                if isinstance(c, dict)]
+    if failures:
+        rows.append(("Validation failures", ", ".join(failures)))
+    lines = _ingredient_lines(record.get("ingredients") or [])
+    if lines:
+        rows.append(("Ingredients", "\n".join(lines)))
+    xmp = record.get("xmp_dst")
+    if xmp:
+        rows.append(("XMP source type", f"{_term(xmp.get('uri', ''))} "
+                     f"({DST_CLASS_LABELS.get(xmp.get('class'), '')}), {UNSIGNED}"))
+    if record.get("remote_url"):
+        rows.append(("Remote manifest", str(record["remote_url"])))
+    if record.get("store_in_bytes"):
+        rows.append(("Manifest store in", str(record["store_in_bytes"])))
+    if record.get("library_version"):
+        rows.append(("Read with", str(record["library_version"])))
+    return rows
+
+
+def describe_text(record: dict | None) -> str:
+    """``describe`` as lines of 'label: value', for a report cell."""
+    return "\n".join(f"{k}: {v}" for k, v in describe(record))
+
+
+def xmp_text(record: dict | None) -> str:
+    """The unsigned XMP declaration's class, labelled as such, or ''."""
+    xmp = (record or {}).get("xmp_dst")
+    return f"{xmp.get('class')} ({UNSIGNED})" if xmp else ""
+
+
+def load(info: str | None) -> dict | None:
+    """The record kept in ``files.c2pa_info``, or None."""
+    if not info:
+        return None
+    try:
+        rec = json.loads(info)
+    except (TypeError, ValueError):
+        return None
+    return rec if isinstance(rec, dict) else None
