@@ -26,7 +26,7 @@ from flask import Flask, abort, jsonify, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 from .. import (appconfig, archive, backup, basemaps, categories, docmedia, exocache, flags,
-               lava, relink, report, savedset)
+               lava, provenance, relink, report, savedset)
 from ..case import open_case, parse_source_spec
 from ..db import FILE_PATH_SQL, ORIGINS, TOOL_ACTOR
 from ..facematch import find_matching_faces
@@ -611,6 +611,36 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                 j.update(running=False, stage="done", message="Screening done",
                          stats={"screened": n})
             except Exception as exc:  # noqa: BLE001
+                j.update(running=False, stage="error",
+                         error=f"{type(exc).__name__}: {exc}")
+
+        threading.Thread(target=_job, daemon=True).start()
+        return jsonify({"ok": True})
+
+    @app.post("/api/provenance")
+    def run_provenance():
+        """Read Content Credentials for every picture and video not read yet (and
+        the not-checked ones again), or all of them with {"force": true}."""
+        if state["case"] is None:
+            abort(409, description="no case open")
+        if state["job"]["running"]:
+            abort(409, description="a job is already running")
+        body = request.get_json(silent=True) or {}
+        force = bool(body.get("force"))
+        case = state["case"]
+        state["job"] = {"running": True, "stage": "process", "done": 0,
+                        "total": 0, "message": "Reading Content Credentials…",
+                        "stats": None, "error": None}
+
+        def _job() -> None:
+            j = state["job"]
+            try:
+                from ..pipeline import provenance_pass
+                counts = provenance_pass(case, force=force,
+                                         progress=lambda d, t: j.update(done=d, total=t))
+                j.update(running=False, stage="done",
+                         message="Content Credentials read", stats=counts)
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 j.update(running=False, stage="error",
                          error=f"{type(exc).__name__}: {exc}")
 
@@ -1868,7 +1898,11 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             f"COALESCE(SUM({_retryable}), 0) n_retry, "
             f"COALESCE(SUM({_arch}), 0) arch_total, "
             f"SUM(CASE WHEN {_arch} AND id IN (SELECT container_id FROM files "
-            "WHERE container_id IS NOT NULL) THEN 1 ELSE 0 END) arch_expanded "
+            "WHERE container_id IS NOT NULL) THEN 1 ELSE 0 END) arch_expanded, "
+            # Content Credentials: each state, and the pictures and videos not read
+            + ", ".join(f"COALESCE(SUM(c2pa_state = '{st}'), 0) c2pa_{st}"
+                        for st in provenance.STATES) + ", "
+            "COALESCE(SUM(kind IN ('image','video') AND c2pa_state IS NULL), 0) c2pa_unread "
             "FROM files").fetchone()
         scr = {"n": one["n"], "wf": one["wf"], "ws": one["ws"]}
         n_err, n_retry = one["n_err"], one["n_retry"]
@@ -1893,7 +1927,10 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             "FROM files WHERE container_id IS NOT NULL GROUP BY container_id) k "
             "ON k.container_id = files.id WHERE files.kind = 'archive' LIMIT -1)").fetchone()
         a_items, d_items = cont["a_items"], cont["d_items"]
+        c2pa = {"unread": one["c2pa_unread"],
+                "states": {st: one[f"c2pa_{st}"] for st in provenance.STATES}}
         return {
+            "c2pa": c2pa,
             "srcs": srcs, "clusters": clusters, "scr": scr, "n_err": n_err,
             "n_retry": n_retry, "arch": arch,
             "cont": dict(cont), "a_items": a_items, "d_items": d_items,
@@ -1974,6 +2011,13 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                 "with_faces": scr["wf"] or 0,
                 "with_skin": scr["ws"] or 0,
                 "screenable": scr["n"] or 0,
+            },
+            # Read from metadata; nothing here is a classification.
+            "provenance": {
+                **counts["c2pa"],
+                # whether this install can validate a signature; checked on every
+                # call since a library in the working directory can come and go
+                "library": provenance.library_available()[1] is None,
             },
         }
 

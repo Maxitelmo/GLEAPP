@@ -18,7 +18,7 @@ from typing import Any, Iterable
 from . import vicdetails
 from .vendor import exoprobe
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 # Bits of files.hashset_mask: which kinds of source matched a file. A file that
 # matched two places carries both bits, so a filter can ask for either or both.
@@ -187,10 +187,22 @@ CREATE TABLE IF NOT EXISTS files (
                                           -- Python when the row is written, see exo_cache_flag();
                                           -- NULL only on a row a build without the column wrote,
                                           -- and opening the case fills those.
-    expanded      INTEGER                 -- on a container that an expansion pass opened and got
+    expanded      INTEGER,                -- on a container that an expansion pass opened and got
                                           -- nothing from: what that pass was (bits, see
                                           -- gleapp/nested.py), so a later pass that could add
                                           -- nothing either leaves it alone. NULL otherwise.
+    -- Content Credentials (C2PA) and the IPTC digital source type, as the file declares
+    -- them; see gleapp/provenance.py. Metadata, never a classification. NULL in all four
+    -- means not read yet (a case processed before schema 19, or a file left to the
+    -- reader by a run that stopped); the pass `gleapp provenance` reads those.
+    c2pa_state     TEXT,                  -- absent | malformed | invalid | valid_untrusted
+                                          -- | trusted | not_checked
+    c2pa_dst_class TEXT,                  -- the class of the source type the active manifest
+                                          -- declares (provenance.DST_CLASSES), even when the
+                                          -- manifest is not valid; 'none' when it declares none
+    c2pa_signer    TEXT,                  -- 'common name (issuer)' of the claim signer
+    c2pa_info      TEXT                   -- JSON: the whole record, codes, ingredients, the
+                                          -- unsigned XMP declaration and the trust lists used
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_md5      ON files(md5);
@@ -464,6 +476,8 @@ class CaseDB:
             ("hashset_sources", "TEXT"), ("hashset_mask", "INTEGER"),
             ("grp_head", "INTEGER NOT NULL DEFAULT 1"), ("cache_info", "TEXT"),
             ("exo_cache", "INTEGER"), ("expanded", "INTEGER"),
+            ("c2pa_state", "TEXT"), ("c2pa_dst_class", "TEXT"), ("c2pa_signer", "TEXT"),
+            ("c2pa_info", "TEXT"),
         ):
             if col not in have:
                 self.conn.execute(f"ALTER TABLE files ADD COLUMN {col} {decl}")
@@ -474,6 +488,9 @@ class CaseDB:
         # case open; each was a pass over the table without them
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_files_source ON files(source)")
+        # the Content Credentials filters read it
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_c2pa_state ON files(c2pa_state)")
         # What was extracted from each container, found and counted from the index
         # alone: the sidebar counts those rows per container by kind, and with only
         # container_id indexed that read every extracted row (399 ms of a 615 ms

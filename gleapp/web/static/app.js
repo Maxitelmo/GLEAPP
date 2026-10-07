@@ -2562,6 +2562,7 @@ async function refreshContext() {
   state.flags = c.flags || [];
   try { await refreshFlags(); } catch (e) {}
   updateScreenInfo(c.screening);
+  updateC2paInfo(c.provenance);
   refreshSimIndexInfo();
   updateArchInfo(c.archives); updateContainerCounts(c.containers);
   updateKnownHash(c.known_hash);
@@ -3015,6 +3016,23 @@ function updateScreenInfo(scr) {
     btn.style.display = "";
     btn.textContent = "Re-run screening";
   }
+}
+/* ---------- Content Credentials (metadata, never a classification) ---------- */
+function updateC2paInfo(pv) {
+  if (!pv) return;
+  const info = $("#c2paInfo"), btn = $("#btnC2pa");
+  const st = pv.states || {};
+  const read = Object.values(st).reduce((a, b) => a + (b || 0), 0);
+  const withCr = read - (st.absent || 0);
+  const lines = [];
+  if (pv.unread) lines.push(`Not read yet: ${pv.unread.toLocaleString()} pictures and videos.`);
+  if (read) lines.push(`Read: ${read.toLocaleString()}, ${withCr.toLocaleString()} with Content Credentials.`);
+  if (!pv.library) lines.push("The c2pa library is not installed, so signatures are not checked.");
+  info.textContent = lines.join(" ");
+  btn.style.display = pv.unread || st.not_checked ? "" : "none";
+  btn.textContent = pv.unread
+    ? `Read Content Credentials (${pv.unread.toLocaleString()} files)`
+    : `Read again the ${(st.not_checked || 0).toLocaleString()} not checked`;
 }
 // The sidebar is narrow, so a long job message is cut off with an ellipsis; hovering
 // the bar shows all of it. Several jobs write the text, so the tooltip follows it.
@@ -3505,6 +3523,21 @@ $("#btnScreen").onclick = async () => {
       updateScreenInfo(c.screening);
     } catch (e) {}
     toast("Screening complete");
+    load();
+  });
+};
+$("#btnC2pa").onclick = async () => {
+  const r = await api("/api/provenance", { method: "POST", body: JSON.stringify({}) });
+  if (r.error) return toast(r.message || "Could not start reading Content Credentials");
+  $("#btnC2pa").disabled = true;
+  trackJob("#c2paInfo", "#taskProg", "Reading Content Credentials", async (ok) => {
+    $("#btnC2pa").disabled = false;
+    if (!ok) return;                     // leave the failure text in place
+    try {
+      const c = await api("/api/context");
+      updateC2paInfo(c.provenance);
+    } catch (e) {}
+    toast("Content Credentials read");
     load();
   });
 };
@@ -4999,6 +5032,7 @@ $("#mapViewClose").onclick = closeMapView;
     document.title = "GLEAPP — " + (c.case || "");
     if (c.vic) $("#btnVic").style.display = "";
     updateScreenInfo(c.screening);
+    updateC2paInfo(c.provenance);
     refreshSimIndexInfo();
     updateArchInfo(c.archives); updateContainerCounts(c.containers);
     updateKnownHash(c.known_hash);

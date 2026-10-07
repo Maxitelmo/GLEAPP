@@ -32,10 +32,12 @@ directory before its own package folder, so it is not imported while one sits th
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import struct
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -830,8 +832,22 @@ def _planted_c2pa_library() -> bool:
     return False
 
 
+def library_available() -> tuple[bool, str | None]:
+    """Whether c2pa-python can be used, without loading it: the native library is
+    only ever loaded by the process that reads with it."""
+    if _planted_c2pa_library():
+        return False, PLANTED
+    if "c2pa" in sys.modules:
+        return (True, None) if sys.modules["c2pa"] is not None else (False, NOT_CHECKED_LIBRARY)
+    try:
+        found = importlib.util.find_spec("c2pa") is not None
+    except (ImportError, ValueError):
+        found = False
+    return (True, None) if found else (False, NOT_CHECKED_LIBRARY)
+
+
 def _library():
-    """The c2pa module, or the reason it cannot be used."""
+    """The c2pa module, or the reason it cannot be used. Loads the native library."""
     if _planted_c2pa_library():
         return None, PLANTED
     try:
@@ -865,66 +881,206 @@ def _scrub(text: str, path: str) -> str:
     return scrub_local_paths(text, path)[:_MAX_TEXT]
 
 
-def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dict:
-    """The provenance record of one file, JSON-serializable. Never writes to ``path``.
-    ``trust`` defaults to ``configured_trust_lists()``; pass ``TrustLists()`` to read
-    with no anchors at all."""
+# -- one file: what the bytes settle, what the reader is asked, what is recorded -------
+
+ABSENT_BY_SCAN = ("no manifest store and no reference to one in the file's metadata "
+                  "blocks (read by GLEAPP)")
+ABSENT_BY_READER = "the c2pa reader found no manifest store"
+READER_STOPPED = "C2PA not checked: the reader stopped on this file"
+UNSUPPORTED = "C2PA not checked: the c2pa reader does not support this format"
+UNREADABLE = "C2PA not checked: the c2pa reader could not read the file"
+
+
+def prescan(path: str | Path) -> tuple[dict, dict | None]:
+    """(record, request). The part of a read GLEAPP does itself, from the bytes.
+    ``request`` is None when the record is final; otherwise it is what the reader
+    is to be asked: ``{"path", "mime", "remote"}``."""
     path = str(path)
     record: dict[str, Any] = {"state": "not_checked", "codes": _codes(None),
                               "active_dst": None, "dst_class": "none", "ingredients": [],
-                              "xmp_dst": None}
+                              "xmp_dst": None, "store_in_bytes": None,
+                              "library_version": None}
     try:
         blocks = scan_blocks(path)
     except OSError as exc:
         record["state_reason"] = "file could not be read: " + _scrub(
             f"{type(exc).__name__}: {exc}", path)
-        return record
+        return record, None
     record["xmp_dst"] = xmp_declaration(blocks.xmp)
     record["store_in_bytes"] = ", ".join(blocks.stores) or None
     remote = _remote_reference(blocks.xmp)
-    c2pa, why = _library()
-    record["library_version"] = library_version() if c2pa else None
-    if c2pa is None:
-        record["state_reason"] = why
-        return record
     if blocks.known and not blocks.stores and not remote:
-        record["state"] = "absent"      # the whole container was read and holds none
-        return record
-    if trust is None:
-        try:
-            trust = configured_trust_lists()
-        except TrustListError as exc:
-            # reading with the bundled lists instead would record a result the
-            # examiner did not ask for
-            record["state_reason"] = "C2PA not checked: trust list could not be read: " + \
-                _scrub(str(exc), path)
-            return record
-    record["trust_lists"] = [a.describe() for a in trust.anchors]
+        # the whole container was read and holds none: no reader is needed to say so
+        record["state"] = "absent"
+        record["state_reason"] = ABSENT_BY_SCAN
+        return record, None
+    usable, why = library_available()
+    if not usable:
+        record["state_reason"] = why
+        return record, None
+    return record, {"path": path, "mime": blocks.mime, "remote": remote}
+
+
+def read_outcome(path: str, mime: str, settings: dict) -> dict:
+    """What the c2pa reader makes of one file, as JSON. This is the only part of a
+    read that loads the native library; ``read_batch`` runs it in a child process."""
+    c2pa, why = _library()
+    if c2pa is None:
+        return {"kind": "unavailable", "reason": why}
+    version = library_version()
     try:
-        ctx = c2pa.Context(settings=c2pa.Settings.from_dict(reader_settings(trust)))
+        ctx = c2pa.Context(settings=c2pa.Settings.from_dict(settings))
         with open(path, "rb") as fh:
-            reader = c2pa.Reader(blocks.mime, fh, context=ctx)
+            reader = c2pa.Reader(mime, fh, context=ctx)
             try:
                 store = json.loads(reader.json())
             finally:
                 reader.close()
     except c2pa.C2paError.ManifestNotFound:
-        record["state"] = "absent"
-        return record
+        return {"kind": "absent", "library_version": version}
     except c2pa.C2paError.RemoteManifest:
-        record["state_reason"] = REMOTE_NOT_FETCHED
-        record["remote_url"] = remote
-        return record
-    except c2pa.C2paError as exc:
-        record["state"] = "malformed"
-        record["state_reason"] = _scrub(str(exc), path)
-        return record
+        return {"kind": "remote", "library_version": version}
+    except c2pa.C2paError.NotSupported:
+        return {"kind": "unsupported", "library_version": version}
+    except (c2pa.C2paError.Io, c2pa.C2paError.FileNotFound) as exc:
+        return {"kind": "io", "reason": _scrub(str(exc), path), "library_version": version}
+    except c2pa.C2paError as exc:       # about the manifest store itself
+        return {"kind": "malformed", "reason": _scrub(str(exc), path),
+                "library_version": version}
     # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - recorded, never raised into the pipeline
-        record["state_reason"] = "reader error: " + _scrub(f"{type(exc).__name__}: {exc}", path)
-        return record
-    record.update(parse_manifest_store(store, tsa_uris=trust.tsa_uris))
-    vouched = trust.by_uri(record.get("trust_list_uri"))
-    record["trusted_by"] = vouched.label if vouched else None
-    record["trust_list_sha256"] = vouched.sha256 if vouched else None
+        return {"kind": "error", "library_version": version,
+                "reason": "reader error: " + _scrub(f"{type(exc).__name__}: {exc}", path)}
+    return {"kind": "store", "store": store, "library_version": version}
+
+
+def finish(record: dict, request: dict, outcome: dict, trust: TrustLists) -> dict:
+    """``record`` completed with what the reader made of the file."""
+    kind = outcome.get("kind")
+    record["library_version"] = outcome.get("library_version")
+    record["trust_lists"] = [a.describe() for a in trust.anchors]
+    if kind == "store":
+        record.update(parse_manifest_store(outcome["store"], tsa_uris=trust.tsa_uris))
+        vouched = trust.by_uri(record.get("trust_list_uri"))
+        record["trusted_by"] = vouched.label if vouched else None
+        record["trust_list_sha256"] = vouched.sha256 if vouched else None
+    elif kind == "absent":
+        record["state"] = "absent"
+        record["state_reason"] = ABSENT_BY_READER
+    elif kind == "remote":
+        record["state_reason"] = REMOTE_NOT_FETCHED
+        record["remote_url"] = request.get("remote")
+    elif kind == "malformed":
+        record["state"] = "malformed"
+        record["state_reason"] = outcome.get("reason")
+    elif kind == "crashed":
+        record["state_reason"] = READER_STOPPED
+    elif kind == "unsupported":
+        record["state_reason"] = UNSUPPORTED
+    elif kind == "io":
+        record["state_reason"] = f"{UNREADABLE}: {outcome.get('reason') or ''}".rstrip(": ")
+    else:                               # unavailable, error
+        record["state_reason"] = outcome.get("reason") or "reader error"
     return record
+
+
+def _resolve(trust: TrustLists | None) -> TrustLists:
+    return configured_trust_lists() if trust is None else trust
+
+
+def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dict:
+    """The provenance record of one file, JSON-serializable, read in this process.
+    Never writes to ``path``. ``trust`` defaults to ``configured_trust_lists()``;
+    pass ``TrustLists()`` to read with no anchors at all. ``read_batch`` reads many
+    files with the reader in a child process instead."""
+    record, request = prescan(path)
+    if request is None:
+        return record
+    try:
+        trust = _resolve(trust)
+    except TrustListError as exc:
+        # reading with the bundled lists instead would record a result the
+        # examiner did not ask for
+        record["state_reason"] = TRUST_UNREADABLE + _scrub(str(exc), str(path))
+        return record
+    outcome = read_outcome(request["path"], request["mime"], reader_settings(trust))
+    return finish(record, request, outcome, trust)
+
+
+TRUST_UNREADABLE = "C2PA not checked: trust list could not be read: "
+
+
+# -- many files: the reader in a child process ----------------------------------------
+
+def worker_command() -> list[str]:
+    from .workers import worker_command as _command  # pylint: disable=import-outside-toplevel
+    return _command("c2paworker")
+
+
+def _run_reader(requests: list[dict], settings: dict, *, timeout: int, depth: int = 0
+                ) -> dict[str, dict]:
+    """{path: outcome} from the reader process. The paths and the settings go on its
+    stdin, never on its command line or in a file. A child that stops before
+    answering for every file is run again on halves of what it left, so the file it
+    stopped on ends alone and is the only one recorded as stopping it."""
+    if not requests:
+        return {}
+    payload = json.dumps({"settings": settings,
+                          "items": [{"path": r["path"], "mime": r["mime"]} for r in requests]})
+    try:
+        done = subprocess.run(worker_command(), input=payload, capture_output=True,
+                              text=True, encoding="utf-8", timeout=timeout, check=False)
+        lines = (done.stdout or "").splitlines()
+    except (subprocess.TimeoutExpired, OSError):
+        lines = []
+    wanted = {r["path"] for r in requests}
+    out: dict[str, dict] = {}
+    for line in lines:
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and item.get("path") in wanted:
+            out[item["path"]] = item.get("outcome") or {"kind": "error"}
+    left = [r for r in requests if r["path"] not in out]
+    if left:
+        if len(left) == 1 or depth >= 12:
+            for r in left:
+                out[r["path"]] = {"kind": "crashed"}
+        else:
+            mid = len(left) // 2
+            for half in (left[:mid], left[mid:]):
+                out.update(_run_reader(half, settings, timeout=timeout, depth=depth + 1))
+    return out
+
+
+def read_batch(paths: Iterable[str | Path], *, trust: TrustLists | None = None,
+               timeout: int = 600) -> dict[str, dict]:
+    """{path: record} for many files, with the c2pa reader in a child process.
+    Raises TrustListError, before anything is read, when a configured list cannot
+    be read."""
+    paths = [str(p) for p in paths]
+    pre = {p: prescan(p) for p in paths}
+    requests = [req for _rec, req in pre.values() if req is not None]
+    out = {p: rec for p, (rec, req) in pre.items() if req is None}
+    if not requests:
+        return out
+    trust = _resolve(trust)
+    outcomes = _run_reader(requests, reader_settings(trust), timeout=timeout)
+    for req in requests:
+        rec, _req = pre[req["path"]]
+        out[req["path"]] = finish(rec, req, outcomes.get(req["path"], {"kind": "crashed"}),
+                                  trust)
+    return out
+
+
+def columns(record: dict) -> dict:
+    """The four columns ``files`` keeps for a record."""
+    return {"c2pa_state": record["state"],
+            "c2pa_dst_class": record.get("dst_class") or "none",
+            "c2pa_signer": signer_text(record.get("signer")) or None,
+            "c2pa_info": json.dumps(record, sort_keys=True)}
+
+
+EMPTY_COLUMNS = {"c2pa_state": None, "c2pa_dst_class": None, "c2pa_signer": None,
+                 "c2pa_info": None}

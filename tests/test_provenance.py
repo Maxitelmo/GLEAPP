@@ -521,8 +521,19 @@ def test_a_file_with_no_store_is_absent_without_asking_the_library(tmp_path, fak
     p.write_bytes(_jpeg())
     rec = pv.read_provenance(p)
     assert rec["state"] == "absent"
+    assert rec["state_reason"] == pv.ABSENT_BY_SCAN      # says how absence was found
     assert lib.calls == []
-    assert rec["library_version"].endswith("c2pa-rs 0.0.0-standin")
+    assert rec["library_version"] is None
+
+
+def test_without_the_library_a_file_with_no_store_is_still_absent(tmp_path, monkeypatch):
+    """Absence is what GLEAPP's own reading of every metadata block found; no
+    signature is involved, so the library is not needed to record it."""
+    monkeypatch.setitem(sys.modules, "c2pa", None)
+    p = tmp_path / "plain.jpg"
+    p.write_bytes(_jpeg())
+    rec = pv.read_provenance(p)
+    assert rec["state"] == "absent" and rec["state_reason"] == pv.ABSENT_BY_SCAN
 
 
 def test_a_store_is_read_with_nothing_fetched_and_parsed(tmp_path, fake_c2pa):
@@ -596,6 +607,23 @@ def test_a_store_the_library_cannot_parse_is_malformed_and_names_no_path(tmp_pat
     assert rec["state"] == "malformed"
     assert str(tmp_path) not in rec["state_reason"]
     assert "JumbfParseError" in rec["state_reason"]
+
+
+@pytest.mark.parametrize("error, reason", [
+    ("NotSupported", "C2PA not checked: the c2pa reader does not support this format"),
+    ("Io", "C2PA not checked: the c2pa reader could not read the file"),
+    ("FileNotFound", "C2PA not checked: the c2pa reader could not read the file"),
+])
+def test_a_reader_failure_that_says_nothing_about_the_manifest_is_not_checked(
+        tmp_path, fake_c2pa, error, reason):
+    """Only a failure about the manifest itself makes it malformed: a format the
+    reader does not take, or a file it could not read, leaves it not checked."""
+    fake_c2pa(raises=lambda f: getattr(f.C2paError, error)("synthetic"))
+    p = tmp_path / "m.jpg"
+    p.write_bytes(_jpeg(_app11_store()))
+    rec = pv.read_provenance(p)
+    assert rec["state"] == "not_checked"
+    assert rec["state_reason"].startswith(reason)
 
 
 def test_any_other_reader_failure_is_not_checked(tmp_path, fake_c2pa):

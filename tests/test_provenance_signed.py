@@ -10,7 +10,6 @@ These tests need the optional extra (``pip install -e ".[provenance]"``) and ski
 without it; CI's Linux and Windows jobs install it.
 """
 
-import datetime
 import hashlib
 import io
 import os
@@ -21,84 +20,21 @@ from PIL import Image
 
 from gleapp import provenance as pv
 
-c2pa = pytest.importorskip("c2pa")
-# pylint: disable=wrong-import-position,wrong-import-order,import-error
-from cryptography import x509  # noqa: E402  (installed with c2pa-python)
-from cryptography.hazmat.primitives import hashes, serialization  # noqa: E402
-from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
-from cryptography.x509.oid import NameOID, ObjectIdentifier  # noqa: E402
-
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
-C2PA_CLAIM_SIGNING = ObjectIdentifier("1.3.6.1.4.1.62558.2.1")
-# What the Builder checks its own signature with. Its default policy leaves the C2PA
-# EKU out, the same gap reader_settings closes for reading.
-_SIGN_SETTINGS = {"verify": {"remote_manifest_fetch": False, "ocsp_fetch": False},
-                  "trust": {"trust_config": "1.3.6.1.4.1.62558.2.1\n"}}
-
-
-def _name(cn: str) -> x509.Name:
-    return x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn),
-                      x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Synthetic Test Org")])
+pytest.importorskip("c2pa")
+# pylint: disable=wrong-import-position,wrong-import-order
+from c2pasign import DST, created, make_chain, sign  # noqa: E402  pylint: disable=import-error
 
 
 @pytest.fixture(scope="module", name="chain")
 def _chain_fixture():
-    """(signer, CA certificate PEM): a root and a leaf valid for a day either side."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    day = datetime.timedelta(days=1)
-    ca_key = ec.generate_private_key(ec.SECP256R1())
-    ca = (x509.CertificateBuilder().subject_name(_name("Synthetic Root"))
-          .issuer_name(_name("Synthetic Root")).public_key(ca_key.public_key())
-          .serial_number(1).not_valid_before(now - day).not_valid_after(now + day)
-          .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
-          .add_extension(x509.KeyUsage(False, False, False, False, False, True, True,
-                                       False, False), True)
-          .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), False)
-          .sign(ca_key, hashes.SHA256()))
-    key = ec.generate_private_key(ec.SECP256R1())
-    leaf = (x509.CertificateBuilder().subject_name(_name("Synthetic Signer"))
-            .issuer_name(ca.subject).public_key(key.public_key())
-            .serial_number(2).not_valid_before(now - day).not_valid_after(now + day)
-            .add_extension(x509.BasicConstraints(ca=False, path_length=None), True)
-            .add_extension(x509.KeyUsage(True, False, False, False, False, False, False,
-                                         False, False), True)
-            .add_extension(x509.ExtendedKeyUsage([C2PA_CLAIM_SIGNING]), False)
-            .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), False)
-            .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(
-                ca_key.public_key()), False)
-            .sign(ca_key, hashes.SHA256()))
-    pem = lambda cert: cert.public_bytes(serialization.Encoding.PEM)  # noqa: E731
-    private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
-                                serialization.NoEncryption())
-    signer = c2pa.Signer.from_info(c2pa.C2paSignerInfo(b"es256", pem(leaf) + pem(ca),
-                                                       private, None))
-    return signer, pem(ca)
+    """(signer, CA certificate PEM)."""
+    return make_chain()
 
 
 def _picture(fmt: str = "JPEG", **kw) -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (48, 32), (30, 110, 170)).save(buf, fmt, **kw)
     return buf.getvalue()
-
-
-def _sign(chain, src: bytes, mime: str, actions: list, *, ingredient: bytes | None = None,
-          generator: str = "Synthetic Generator") -> bytes:
-    signer, _ca = chain
-    manifest = {"claim_generator_info": [{"name": generator, "version": "1.0"}],
-                "title": "synthetic", "assertions": [
-                    {"label": "c2pa.actions", "data": {"actions": actions}}]}
-    builder = c2pa.Builder(manifest, context=c2pa.Context(
-        settings=c2pa.Settings.from_dict(_SIGN_SETTINGS)))
-    if ingredient is not None:
-        builder.add_ingredient({"title": "ingredient.jpg", "relationship": "parentOf",
-                                "label": "ingredient-1"}, "image/jpeg", io.BytesIO(ingredient))
-    out = io.BytesIO()
-    builder.sign(signer, mime, io.BytesIO(src), out)
-    return out.getvalue()
-
-
-def _created(dst_term: str) -> list:
-    return [{"action": "c2pa.created", "digitalSourceType": DST + dst_term}]
 
 
 def _write(tmp_path, name: str, data: bytes):
@@ -118,7 +54,7 @@ def test_a_generated_picture_by_an_unlisted_signer_is_valid_untrusted(tmp_path, 
     under the C2PA Trust List does. c2pa-rs 0.91.0 accepts that EKU only when it is
     named in trust.trust_config; without it this file read as invalid."""
     p = _write(tmp_path, "generated.jpg",
-               _sign(chain, _picture(), "image/jpeg", _created("trainedAlgorithmicMedia")))
+               sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     rec = _read(p)
     assert rec["state"] == "valid_untrusted", rec["codes"]["failure"]
     assert [c["code"] for c in rec["codes"]["failure"]] == ["signingCredential.untrusted"]
@@ -135,7 +71,7 @@ def test_a_generated_picture_by_an_unlisted_signer_is_valid_untrusted(tmp_path, 
 
 
 def test_a_changed_byte_breaks_the_hard_binding(tmp_path, chain):
-    signed = bytearray(_sign(chain, _picture(), "image/jpeg", _created("trainedAlgorithmicMedia")))
+    signed = bytearray(sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     signed[-10] ^= 0xFF                       # inside the entropy-coded scan, before EOI
     rec = _read(_write(tmp_path, "changed.jpg", bytes(signed)))
     assert rec["state"] == "invalid"
@@ -148,23 +84,23 @@ def test_a_changed_byte_breaks_the_hard_binding(tmp_path, chain):
 
 def test_a_capture(tmp_path, chain):
     rec = _read(_write(tmp_path, "capture.jpg",
-                       _sign(chain, _picture(), "image/jpeg", _created("digitalCapture"))))
+                       sign(chain, _picture(), "image/jpeg", created("digitalCapture"))))
     assert rec["state"] == "valid_untrusted"
     assert rec["dst_class"] == "capture"
 
 
 def test_a_composite_synthetic(tmp_path, chain):
     rec = _read(_write(tmp_path, "composite.jpg",
-                       _sign(chain, _picture(), "image/jpeg", _created("compositeSynthetic"))))
+                       sign(chain, _picture(), "image/jpeg", created("compositeSynthetic"))))
     assert rec["dst_class"] == "ai_composite"
     assert rec["active_dst"] == DST + "compositeSynthetic"
 
 
 def test_an_ai_ingredient_inside_an_edit_that_declares_nothing(tmp_path, chain):
-    generated = _sign(chain, _picture(), "image/jpeg", _created("trainedAlgorithmicMedia"))
+    generated = sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia"))
     edit = [{"action": "c2pa.opened", "parameters": {"ingredientIds": ["ingredient-1"]}},
             {"action": "c2pa.edited"}]
-    p = _write(tmp_path, "edited.jpg", _sign(chain, _picture(), "image/jpeg", edit,
+    p = _write(tmp_path, "edited.jpg", sign(chain, _picture(), "image/jpeg", edit,
                                              ingredient=generated, generator="Synthetic Editor"))
     rec = _read(p)
     assert rec["state"] == "valid_untrusted"
@@ -186,7 +122,7 @@ def test_a_picture_with_no_credentials_is_absent(tmp_path):
 
 def test_without_the_library_a_signed_file_is_not_checked(tmp_path, chain, monkeypatch):
     p = _write(tmp_path, "generated.jpg",
-               _sign(chain, _picture(), "image/jpeg", _created("trainedAlgorithmicMedia")))
+               sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     monkeypatch.setitem(sys.modules, "c2pa", None)
     rec = pv.read_provenance(p)
     assert rec["state"] == "not_checked"
@@ -213,7 +149,7 @@ def test_a_signer_on_an_examiner_list_is_trusted_and_the_list_named(tmp_path, ch
     _signer, ca_pem = chain
     anchors = _write(tmp_path, "synthetic-ca.pem", ca_pem)
     p = _write(tmp_path, "generated.jpg",
-               _sign(chain, _picture(), "image/jpeg", _created("trainedAlgorithmicMedia")))
+               sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     rec = pv.read_provenance(p, trust=pv.trust_lists(signer_anchors=anchors))
     assert rec["state"] == "trusted", rec["codes"]["failure"]
     assert rec["codes"]["failure"] == []
@@ -228,7 +164,7 @@ def test_a_signer_trusted_only_through_a_tsa_anchor_is_not_trusted(tmp_path, cha
     """c2pa-rs 0.91.0 reports Trusted here; the TSA list does not vouch for signers."""
     _signer, ca_pem = chain
     p = _write(tmp_path, "generated.jpg",
-               _sign(chain, _picture(), "image/jpeg", _created("trainedAlgorithmicMedia")))
+               sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     trust = pv.TrustLists((pv.Anchor("tsa", ca_pem, "synthetic CA loaded as a TSA"),))
     rec = pv.read_provenance(p, trust=trust)
     assert rec["state"] == "valid_untrusted"
@@ -239,7 +175,7 @@ def test_png_and_webp_carry_their_store_where_the_scan_looks(tmp_path, chain):
     for fmt, mime, where in (("PNG", "image/png", "PNG caBX"),
                              ("WEBP", "image/webp", "WebP C2PA")):
         p = _write(tmp_path, "g." + fmt.lower(),
-                   _sign(chain, _picture(fmt), mime, _created("trainedAlgorithmicMedia")))
+                   sign(chain, _picture(fmt), mime, created("trainedAlgorithmicMedia")))
         rec = _read(p)
         assert rec["store_in_bytes"] == where, fmt
         assert rec["state"] == "valid_untrusted", (fmt, rec["codes"]["failure"])
@@ -255,16 +191,29 @@ def test_a_signed_clip(tmp_path, chain):
     for i in range(10):
         writer.write(np.full((48, 64, 3), i * 20, np.uint8))
     writer.release()
-    p = _write(tmp_path, "clip.mp4", _sign(chain, raw.read_bytes(), "video/mp4",
-                                          _created("trainedAlgorithmicMedia")))
+    p = _write(tmp_path, "clip.mp4", sign(chain, raw.read_bytes(), "video/mp4",
+                                          created("trainedAlgorithmicMedia")))
     rec = _read(p)
     assert rec["store_in_bytes"] == "ISOBMFF C2PA uuid box"
     assert rec["state"] == "valid_untrusted", rec["codes"]["failure"]
     assert rec["dst_class"] == "generative_ai"
 
 
+def test_a_container_the_scan_does_not_walk_is_left_to_the_reader(tmp_path):
+    """GLEAPP's scan walks JPEG, PNG, WebP, TIFF and ISOBMFF. Anything else goes to
+    the reader, which names the format from the bytes: a GIF it reads and finds
+    nothing in, a BMP it does not support, which says nothing about a manifest."""
+    gif = _read(_write(tmp_path, "a.gif", _picture("GIF")))
+    assert gif["state"] == "absent"
+    assert gif["state_reason"] == pv.ABSENT_BY_READER
+    bmp = _read(_write(tmp_path, "a.bmp", _picture("BMP")))
+    assert bmp["state"] == "not_checked"
+    assert bmp["state_reason"].startswith(
+        "C2PA not checked: the c2pa reader does not support this format")
+
+
 def test_reading_never_writes_to_the_file(tmp_path, chain):
-    data = _sign(chain, _picture(), "image/jpeg", _created("digitalCapture"))
+    data = sign(chain, _picture(), "image/jpeg", created("digitalCapture"))
     p = _write(tmp_path, "capture.jpg", data)
     before = os.stat(p)
     _read(p)

@@ -2,7 +2,8 @@
 
 The surface is c2pa-python 0.38.0's: ``Settings.from_dict``, ``Context(settings=)``,
 ``Reader(mime, stream, context=)`` with ``json()`` and ``close()``, ``C2paError`` with
-its ``ManifestNotFound`` and ``RemoteManifest`` subclasses, and ``sdk_version()``.
+its ``ManifestNotFound``, ``RemoteManifest``, ``NotSupported``, ``Io`` and
+``FileNotFound`` subclasses, and ``sdk_version()``.
 """
 
 import json
@@ -28,8 +29,17 @@ class FakeC2pa(types.ModuleType):
         class RemoteManifest(C2paError):
             pass
 
+        class NotSupported(C2paError):
+            pass
+
+        class Io(C2paError):
+            pass
+
         C2paError.ManifestNotFound = ManifestNotFound
         C2paError.RemoteManifest = RemoteManifest
+        C2paError.NotSupported = NotSupported
+        C2paError.Io = Io
+        C2paError.FileNotFound = Io
         self.C2paError = C2paError
 
         class Settings:
