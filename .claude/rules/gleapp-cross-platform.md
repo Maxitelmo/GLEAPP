@@ -1146,3 +1146,33 @@ matrix does not, so every Python from 3.10 to 3.14 runs the suite without it.
 **The pin is below 0.39 on purpose.** c2pa-rs 0.91.0 deprecates `trust.trust_anchors` and
 `trust.user_anchors` ("Will be removed in 0.92.0 (scheduled for mid-November 2026)"); GLEAPP
 uses `trust.anchors`. Raise the pin only with the reader's tests run against the new minor.
+
+**c2pa-rs accepts the C2PA EKU only when it is named.** A reader opened from settings builds
+its certificate policy without c2pa-rs's own `valid_eku_oids.cfg`, so a signer whose only
+EKU is c2pa-kp-claimSigning (1.3.6.1.4.1.62558.2.1, the EKU the C2PA Trust List is for)
+read as `signingCredential.invalid`, "certificate missing required EKU", and the manifest
+Invalid. Measured 2026-10-06 with c2pa-python 0.38.0 / c2pa-rs 0.91.0 and a synthetic
+chain: Invalid without `trust.trust_config`, Valid with the six default OIDs in it, Trusted
+once the root is an anchor. `provenance.reader_settings` passes them (`VALID_EKUS`), and
+`tests/test_provenance_signed.py` signs every fixture with that EKU alone. The Builder has
+the same gap at signing time, which is why the tests' signing settings name it too.
+
+**Trust lists are added to, never replaced.** C2PA 2.2 §14.4.1 and §14.4.2 say a
+validator's anchors include the C2PA Trust List and TSA list; an examiner's anchors go in
+beside them and only a newer copy of a C2PA list stands in for the bundled one. c2pa-rs
+reports the `trust_uri` of the anchor list a trusted signer chained to, measured with
+several lists of one kind, so each record names it. It also reports Trusted for a signer
+that chains only to an anchor loaded as a TSA; GLEAPP records that as valid_untrusted.
+
+**The native library never loads in the GLEAPP process.** The parent decides from the bytes
+(no store and no remote reference in a JPEG, PNG, WebP, TIFF or ISOBMFF file is absent, with
+or without the library) and checks only that the package is installed; a file holding a
+store is read by `gleapp/_c2paworker.py`, a batch at a time, the paths and anchors on stdin.
+A batch that stops is split until the file it stopped on is alone. `NotSupported`, `Io` and
+`FileNotFound` from the reader say nothing about a manifest and are not_checked; every other
+`C2paError` is malformed. With an empty format c2pa sniffs the bytes itself: a GIF reads as
+no manifest, a BMP or ICO as unsupported (c2pa-rs 0.91.0).
+
+**Schema 19 adds four columns; NULL is "not read yet".** Processing reads what it processes
+and does not start reading an older case: on an E01 read in place that would pull every
+file out again. `gleapp provenance` and the gallery's button do it when asked.

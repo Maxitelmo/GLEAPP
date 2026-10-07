@@ -371,6 +371,7 @@ A field appears only when the file has a value for it.
 | **Matches** | Matched in (which hash sources flagged it), Exact copies, Visually similar, Similar-group, Error |
 | **Location** | GPS, with a **Copy** button |
 | **Hashes** | MD5, SHA-1, SHA-256, pHash |
+| **Content Credentials** | For a picture or video, a section of its own: the state, signer, declared source type, ingredients, validation codes and the trust lists used, with the paragraph every surface prints. Open when the file has credentials. See §20. |
 
 ### Hex view
 
@@ -545,6 +546,14 @@ was. A reattach is recorded in Processing history.
 | **Has faces** | `faces > 0` from YuNet. Needs screening to have run. |
 | **Skin-tone ratio** | **Any**, or 10% / 30% / 50% or more of the frame skin-toned. Needs screening. |
 | **Run face / skin screening** | Runs it now if it hasn't run. |
+
+### Content Credentials
+
+| Control | What it does |
+|---|---|
+| **State** | Has Content Credentials (malformed, invalid, valid or trusted), one state, or **Not read yet**. See §20. |
+| **Declared source type** | The class of the source type the file's manifest declares, valid or not. An XMP declaration outside any manifest is not counted here. |
+| **Read Content Credentials** | Reads the pictures and videos not read yet, and the ones not checked, on a case processed before this existed. |
 
 ### Duplicates
 
@@ -1889,7 +1898,141 @@ specification is public domain; the Noto Sans glyphs are under the SIL Open
 Font License. All of it is vendored under `gleapp/web/static/maps/` with its
 license texts, and the page loads nothing else.
 
-## 20. Credits & acknowledgments
+## 20. Content Credentials (C2PA) and source type
+
+GLEAPP reads a picture's or video's **Content Credentials** (a C2PA manifest store)
+and any **IPTC digital source type** it carries, and records them as metadata: what
+the file declares about how it was made, who signed that declaration, and whether
+the signature validates. It is not a classifier. It never says whether content is
+synthetic, it gives no score, and nothing here sets or changes a category.
+
+> Content Credentials record what the signer declared. A valid signature shows the
+> credentials were not changed after signing; who signed is established only when
+> the signer's certificate is on a trust list GLEAPP holds (trusted). An AI source
+> type is a declaration, not a finding. Absence of credentials does not indicate
+> authenticity: many platforms and tools remove them.
+
+That paragraph is printed wherever these fields are explained: the details pane, the
+HTML report when its Content Credentials field is chosen, the JSON export and the
+notes of the LAVA Media Files artifact.
+
+### States
+
+Each picture and video gets one state (C2PA 2.2, §14.3, *Validation states*):
+
+| State | Meaning |
+|---|---|
+| **No Content Credentials** (`absent`) | No manifest store. Either GLEAPP read every metadata block of a JPEG, PNG, WebP, TIFF or ISOBMFF (HEIC, AVIF, MP4, MOV) file and found neither a store nor a reference to one, or the c2pa reader found none. The details say which. |
+| **Malformed** | A store that is not well formed: the reader could not parse it, or reported a well-formedness failure (the codes C2PA's Asset Rubrics treat as such). |
+| **Invalid** | Well formed, but validation failed, for example a hard binding that no longer matches the bytes (the file changed after signing). |
+| **Valid, signer not on a trust list** (`valid_untrusted`) | The signature validates and the content matches it, but the signer's certificate does not chain to any trust list GLEAPP holds. Who signed is not established. |
+| **Trusted** | Valid, and the signer chains to a trust list GLEAPP holds. The record names which list. |
+| **Not checked** | Not validated, and the record says why: the c2pa library is not installed, the manifest lives at a remote address (never fetched, see below), the reader does not support the format, a trust list you set cannot be read, or the reader stopped on the file. |
+
+A file processed by a GLEAPP without this reading has no state yet (**Not read yet**).
+
+The validator's own status codes (C2PA 2.2, §15.2.2) are kept with each record:
+success, informational and failure.
+
+### Declared source type
+
+The digital source type the active manifest's actions declare (C2PA 2.2,
+§18.14.4.5, using the IPTC Digital Source Type vocabulary), grouped:
+
+| Class | Terms |
+|---|---|
+| Generative AI | `trainedAlgorithmicMedia`, `trainedAlgorithmicData` |
+| Composite with AI | `compositeWithTrainedAlgorithmicMedia`, `compositeSynthetic`, `virtualRecording` |
+| Algorithmic | `algorithmicMedia` |
+| Capture | `digitalCapture`, `computationalCapture`, `negativeFilm`, `positiveFilm`, `print` |
+| Screen capture | `screenCapture` |
+| Human edits | `humanEdits`, `minorHumanEdits`, `algorithmicallyEnhanced`, `composite`, `compositeCapture` |
+| Other | any other term |
+| None declared | the manifest declares none |
+
+A term is matched on its whole last segment, so a composite is never read as fully
+generated. The declaration of a manifest that is not valid is still recorded, marked
+**not backed by a valid signature** (C2PA 2.2, §15.3). Ingredients (the files an
+edit was made from) are listed with their own declaration, signer and state, so a
+generated picture inside an edit that declares nothing is visible.
+
+A source type found only in **XMP**, outside any manifest, is recorded separately as
+an **unsigned declaration** and never folded into the state or the declared class.
+
+### Trust lists
+
+GLEAPP carries the **C2PA Trust List** and the **C2PA TSA Trust List** as published
+in `c2pa-org/conformance-public`, unmodified, with their source, date and SHA-256 in
+`gleapp/trust/README.md`. C2PA 2.2, §14.4.1 and §14.4.2, say a validator's anchors
+include these lists and that the user should be able to add to them, so:
+
+- **anchors of your own** (for example your laboratory's test CA) are **added** to
+  C2PA's, never put in their place;
+- a **newer copy** of the C2PA Trust List or TSA list can stand in for the copy
+  GLEAPP carries.
+
+Set them for every case in the app's config, or for one run on the command line
+(`--trust-anchors`, `--tsa-anchors`, `--c2pa-trust-list`, `--c2pa-tsa-trust-list`).
+A list that cannot be read stops the reading with that reason; GLEAPP never falls back
+to another list silently. Each record lists the trust lists it was read with, by
+label and SHA-256 (never by the file's path on your machine), and for a trusted
+signer names the one it chained to. A signer that chains only to the **TSA** list is
+recorded as valid but not trusted: that list vouches for time-stamping authorities,
+not signers.
+
+### Offline, and read-only
+
+Nothing is fetched. The reader runs with remote-manifest and OCSP fetching off and no
+network host allowed, and CAWG identity assertions are not decoded (resolving their
+issuers would fetch). A manifest kept only at a remote address is **Not checked**,
+with the address recorded: fetching it would tell a third party which evidence is
+being examined. The evidence is only read; a file inside a zip or a disk image is
+read from the copy processing already makes under the case folder.
+
+### The optional library
+
+Validation needs **c2pa-python**, an optional extra: `pip install -e ".[provenance]"`.
+The release builds do not carry it (its native library comes without the third-party
+notices a binary distribution needs), so in them a file holding credentials is **Not
+checked: library unavailable**. Absence is still recorded without it, since that comes
+from GLEAPP's own reading of the file. The native library runs in a child process of
+its own, a batch at a time, so a fault in it costs one file and never the run.
+
+### Reading them
+
+- **Processing** reads every new picture and video: files with no store are settled
+  from the bytes, and those holding one go to the reader.
+- **Older cases** are not read on their own. Open the sidebar's **Content
+  Credentials** section and click **Read Content Credentials**, or run
+  `gleapp -c CASE provenance` (`--force` reads everything again). Files recorded as
+  Not checked are read again by default.
+
+### Where they show
+
+- **Sidebar filters** (Content Credentials section): **State** (has Content
+  Credentials, each state, not read yet) and **Declared source type**.
+- **List view** columns: *Content Credentials*, *Declared source type*, *C2PA signer*
+  (off by default; add them from the column menu).
+- **Details pane**: a *Content Credentials* section with every field of the record and
+  the paragraph above.
+- **Search** covers the signer and the record (claim generator, ingredients, codes).
+- **Exports**: CSV columns `c2pa_state`, `c2pa_dst_class`, `c2pa_signer`,
+  `c2pa_xmp_dst` and `c2pa_info` (the whole record as JSON); the JSON export carries
+  the record as an object and the paragraph above as `c2pa_caveat`; the HTML report
+  offers a *Content Credentials* field (not on by default); LAVA's Media Files gains
+  *Content Credentials*, *Declared Source Type*, *C2PA Signer* and *Content
+  Credentials Detail*.
+
+### References
+
+- C2PA Technical Specification 2.2: §14.3 (validation states), §14.4 (trust lists),
+  §15.2.2 (status codes), §15.3 (displaying manifest information), §18.14.4.5
+  (digital source type).
+- IPTC Digital Source Type NewsCodes vocabulary.
+- See also NIST AI 100-4 and SWGDE 18-I-001, which this manual has not been checked
+  against section by section.
+
+## 21. Credits & acknowledgments
 
 GLEAPP stands on a lot of other people's work.
 
@@ -2019,6 +2162,19 @@ MIT license).
   include it.
 - **CAID**: CAID-style CSV hash-list handling follows the UK Home Office Child
   Abuse Image Database export layout.
+
+### Content Credentials (section 20)
+
+- **C2PA Trust List** and **C2PA TSA Trust List**: published by the Coalition for
+  Content Provenance and Authenticity in `c2pa-org/conformance-public`, CC BY 4.0.
+  GLEAPP carries them unmodified (`gleapp/trust/`, with the licence text).
+- **C2PA Technical Specification**: Coalition for Content Provenance and Authenticity,
+  CC BY 4.0. GLEAPP uses its status codes and digital source type identifiers.
+- **IPTC Digital Source Type NewsCodes**: International Press Telecommunications
+  Council, CC BY 4.0. GLEAPP uses the vocabulary's identifiers.
+- **c2pa-python**: Adobe and contributors (MIT OR Apache-2.0), with the c2pa-rs
+  library inside it. An optional extra that validates signatures; GLEAPP's release
+  builds do not include it.
 
 ### Inspiration
 
