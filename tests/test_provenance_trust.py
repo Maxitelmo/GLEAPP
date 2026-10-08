@@ -11,6 +11,7 @@ GLEAPP carries. Every record names the lists it was read with and the one, if an
 that a trusted signer chained to.
 """
 
+import base64
 import hashlib
 import io
 import json
@@ -160,15 +161,71 @@ def test_the_app_config_refuses_a_key_it_does_not_know():
 
 # -- what a record says ---------------------------------------------------------------
 
+def _ders(pem) -> list[bytes]:
+    text = pem.decode() if isinstance(pem, bytes) else pem
+    return [base64.b64decode("".join(body.split())) for body in re.findall(
+        r"-----BEGIN CERTIFICATE-----(.+?)-----END CERTIFICATE-----", text, re.S)]
+
+
+def _block(name: bytes) -> bytes:
+    return (b"-----BEGIN CERTIFICATE-----\n" + base64.b64encode(name)
+            + b"\n-----END CERTIFICATE-----\n")
+
+
 def test_a_file_is_read_with_the_configured_lists_and_says_which(tmp_path, monkeypatch):
+    """16 roots are on both C2PA lists. The signer list reaches the reader as published;
+    the TSA list without the certificates the signer list already carries."""
     lib = install_fake_c2pa(monkeypatch, raises=lambda f: f.C2paError.ManifestNotFound("none"))
     p = tmp_path / "a.jpg"
     p.write_bytes(_jpeg_with_store())
-    pv.read_provenance(p)
+    rec = pv.read_provenance(p)
     anchors = lib.settings[0]["trust"]["anchors"]
     assert [a["trust_kind"] for a in anchors] == ["manifest", "tsa"]
     assert hashlib.sha256(anchors[0]["trust_anchors"].encode()).hexdigest() == SIGNERS
-    assert hashlib.sha256(anchors[1]["trust_anchors"].encode()).hexdigest() == TSAS
+    signers = _ders((TRUST / "C2PA-TRUST-LIST.pem").read_bytes())
+    tsas = _ders((TRUST / "C2PA-TSA-TRUST-LIST.pem").read_bytes())
+    assert len(set(signers) & set(tsas)) == 16
+    passed = _ders(anchors[1]["trust_anchors"])
+    assert passed == [c for c in tsas if c not in signers]
+    assert len(passed) == 6
+    assert rec["trust_lists"] == [
+        {"kind": "manifest", "label": "C2PA Trust List (bundled, conformance-public 43a0a6f)",
+         "sha256": SIGNERS, "certificates": 30, "passed": 30},
+        {"kind": "tsa", "label": "C2PA TSA Trust List (bundled, conformance-public 43a0a6f)",
+         "sha256": TSAS, "certificates": 22, "passed": 6,
+         "already_on": ["C2PA Trust List (bundled, conformance-public 43a0a6f)"]}]
+
+
+def test_a_certificate_on_two_lists_reaches_the_reader_on_one(tmp_path, monkeypatch):
+    """c2pa-rs 0.91.0 keeps the anchor lists in a HashSet
+    (Settings::merge_legacy_trust_anchors, sdk/src/settings/mod.rs:1074 and 1124 at
+    e7cc666), so their order changes on every read, and it names the first list a
+    chain reaches, whatever its kind. A certificate on two lists therefore vouched
+    through one or the other at random. Each one now goes to the reader once: on the
+    first signer list that holds it, else on the first TSA list, in the order given.
+    A list left with nothing to pass is recorded and not sent."""
+    lib = install_fake_c2pa(monkeypatch, raises=lambda f: f.C2paError.ManifestNotFound("none"))
+    one, two, three, four, five = (_block(n) for n in (b"one", b"two", b"three", b"four",
+                                                       b"five"))
+    signers = pv.Anchor("manifest", one + two, "signer list")
+    tsas = pv.Anchor("tsa", two + three + five + three, "TSA list")
+    lab = pv.Anchor("manifest", one + five, "examiner signer anchors")
+    repeat = pv.Anchor("manifest", two, "examiner repeat")
+    lab_tsa = pv.Anchor("tsa", three + four, "examiner TSA anchors")
+    p = tmp_path / "a.jpg"
+    p.write_bytes(_jpeg_with_store())
+    rec = pv.read_provenance(p, trust=pv.TrustLists((signers, tsas, lab, repeat, lab_tsa)))
+    sent = {a["trust_uri"]: _ders(a["trust_anchors"])
+            for a in lib.settings[0]["trust"]["anchors"]}
+    assert sent == {signers.uri: [b"one", b"two"], tsas.uri: [b"three"],
+                    lab.uri: [b"five"], lab_tsa.uri: [b"four"]}
+    assert [(d["label"], d["certificates"], d["passed"], d.get("already_on"))
+            for d in rec["trust_lists"]] == [
+        ("signer list", 2, 2, None),
+        ("TSA list", 4, 1, ["signer list", "examiner signer anchors"]),
+        ("examiner signer anchors", 2, 1, ["signer list"]),
+        ("examiner repeat", 1, 0, ["signer list"]),
+        ("examiner TSA anchors", 2, 1, ["TSA list"])]
 
 
 def test_a_trusted_record_names_the_list_the_signer_chained_to(tmp_path, monkeypatch):
@@ -189,11 +246,9 @@ def test_a_trusted_record_names_the_list_the_signer_chained_to(tmp_path, monkeyp
     assert rec["state"] == "trusted"
     assert rec["trusted_by"] == "C2PA Trust List (bundled, conformance-public 43a0a6f)"
     assert rec["trust_list_sha256"] == SIGNERS
-    assert rec["trust_lists"] == [
-        {"kind": "manifest", "label": "C2PA Trust List (bundled, conformance-public 43a0a6f)",
-         "sha256": SIGNERS},
-        {"kind": "tsa", "label": "C2PA TSA Trust List (bundled, conformance-public 43a0a6f)",
-         "sha256": TSAS}]
+    assert [(d["label"], d["sha256"]) for d in rec["trust_lists"]] == [
+        ("C2PA Trust List (bundled, conformance-public 43a0a6f)", SIGNERS),
+        ("C2PA TSA Trust List (bundled, conformance-public 43a0a6f)", TSAS)]
 
 
 def test_a_configured_list_that_cannot_be_read_is_reported_never_swapped(tmp_path, monkeypatch):

@@ -566,7 +566,10 @@ def test_the_trust_lists_used_are_recorded_and_the_one_that_vouched_named(tmp_pa
     p.write_bytes(_jpeg(_app11_store()))
     rec = pv.read_provenance(p, trust=trust)
     assert rec["state"] == "trusted"
-    assert rec["trust_lists"] == [a.describe() for a in (signers, tsa, extra)]
+    assert rec["trust_lists"] == trust.describe()
+    assert [(d["label"], d["passed"]) for d in rec["trust_lists"]] == [
+        ("synthetic signer list", 1), ("synthetic TSA list", 1),
+        ("synthetic examiner list", 1)]
     assert rec["trusted_by"] == "synthetic examiner list"
     assert rec["trust_list_sha256"] == extra.sha256
     anchors = lib.settings[0]["trust"]["anchors"]

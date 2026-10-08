@@ -31,6 +31,8 @@ directory before its own package folder, so it is not imported while one sits th
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import importlib.util
 import json
@@ -40,6 +42,7 @@ import struct
 import subprocess
 import sys
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Any, BinaryIO, Iterable
 
@@ -726,6 +729,25 @@ class Anchor:
         return {"kind": self.kind, "label": self.label, "sha256": self.sha256}
 
 
+_PEM_CERTIFICATE = re.compile(rb"-----BEGIN CERTIFICATE-----(.+?)-----END CERTIFICATE-----",
+                              re.S)
+
+
+def _certificates(pem: bytes) -> list[tuple[bytes, bytes]]:
+    """(identity, PEM block) for each certificate in a PEM list. The identity is the
+    certificate's DER, or the block's own text when its base64 does not decode: such a
+    block is still passed on, and the reader is the one that reports it."""
+    out = []
+    for m in _PEM_CERTIFICATE.finditer(pem):
+        body = b"".join(m.group(1).split())
+        try:
+            identity = base64.b64decode(body, validate=True)
+        except binascii.Error:
+            identity = body
+        out.append((identity, m.group(0) + b"\n"))
+    return out
+
+
 @dataclass(frozen=True)
 class TrustLists:
     """The anchors a file is read with."""
@@ -737,6 +759,57 @@ class TrustLists:
     @property
     def tsa_uris(self) -> frozenset:
         return frozenset(a.uri for a in self.anchors if a.kind == "tsa")
+
+    @cached_property
+    def passed(self) -> tuple[dict, ...]:
+        """What each list hands the reader: every certificate once, on the first signer
+        list that holds it, else on the first TSA list, in the order given.
+
+        c2pa-rs 0.91.0 keeps the anchor lists in a HashSet
+        (Settings::merge_legacy_trust_anchors, sdk/src/settings/mod.rs:1074 and 1124 at
+        e7cc666), so they are in a different order on every read, and it names the first
+        list a chain reaches whatever its kind. 16 roots are on both C2PA lists, so a
+        signer under one of them read as trusted, or through the TSA list as
+        valid_untrusted, at random. Which certificates the reader trusts does not change:
+        c2pa-rs checks a chain against every list whatever its kind, and every
+        certificate left out of one list is still on another.
+
+        Each entry is ``{"anchor", "pem", "certificates", "passed", "already_on"}``;
+        ``pem`` is the list as given when nothing was left out of it, and empty when
+        everything was, in which case it is not sent."""
+        held = [_certificates(a.pem) for a in self.anchors]
+        owner: dict[bytes, int] = {}
+        for i in sorted(range(len(self.anchors)), key=lambda i: self.anchors[i].kind != "manifest"):
+            for identity, _block in held[i]:
+                owner.setdefault(identity, i)
+        out = []
+        for i, anchor in enumerate(self.anchors):
+            kept: dict[bytes, bytes] = {}
+            elsewhere: set[int] = set()
+            for identity, block in held[i]:
+                if owner[identity] == i:
+                    kept.setdefault(identity, block)
+                else:
+                    elsewhere.add(owner[identity])
+            if len(kept) == len(held[i]):         # nothing left out: the list as given
+                pem = anchor.pem
+            else:
+                pem = b"".join(kept.values())
+            out.append({"anchor": anchor, "pem": pem, "certificates": len(held[i]),
+                        "passed": len(kept),
+                        "already_on": [self.anchors[j].label for j in sorted(elsewhere)]})
+        return tuple(out)
+
+    def describe(self) -> list[dict]:
+        """The lists a record was read with, and how much of each reached the reader."""
+        out = []
+        for p in self.passed:
+            entry = {**p["anchor"].describe(), "certificates": p["certificates"],
+                     "passed": p["passed"]}
+            if p["already_on"]:
+                entry["already_on"] = p["already_on"]
+            out.append(entry)
+        return out
 
 
 def _pem_file(path: str | Path, what: str) -> bytes:
@@ -820,8 +893,9 @@ def reader_settings(trust: TrustLists | None) -> dict:
     that would fetch, the EKUs c2pa-rs itself accepts (``VALID_EKUS``) and the given
     anchors under ``trust.anchors`` (0.91 deprecates trust_anchors / user_anchors and
     0.92 removes them)."""
-    anchors = [{"trust_anchors": a.pem.decode("utf-8", "replace"), "trust_uri": a.uri,
-                "trust_kind": a.kind} for a in (trust.anchors if trust else ())]
+    anchors = [{"trust_anchors": p["pem"].decode("utf-8", "replace"),
+                "trust_uri": p["anchor"].uri, "trust_kind": p["anchor"].kind}
+               for p in (trust.passed if trust else ()) if p["pem"]]
     return {
         "verify": {"remote_manifest_fetch": False, "ocsp_fetch": False},
         "core": {"allowed_network_hosts": [], "decode_identity_assertions": False},
@@ -979,7 +1053,7 @@ def finish(record: dict, request: dict, outcome: dict, trust: TrustLists) -> dic
     """``record`` completed with what the reader made of the file."""
     kind = outcome.get("kind")
     record["library_version"] = outcome.get("library_version")
-    record["trust_lists"] = [a.describe() for a in trust.anchors]
+    record["trust_lists"] = trust.describe()
     if kind == "store":
         record.update(parse_manifest_store(outcome["store"], tsa_uris=trust.tsa_uris))
         vouched = trust.by_uri(record.get("trust_list_uri"))

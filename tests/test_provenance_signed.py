@@ -171,6 +171,42 @@ def test_a_signer_trusted_only_through_a_tsa_anchor_is_not_trusted(tmp_path, cha
     assert "TSA" in rec["state_reason"]
 
 
+READS = 16      # c2pa-rs 0.91.0 left this to chance about half the time on each read
+
+
+def _every_read(p, trust) -> set:
+    return {(r["state"], r["trusted_by"])
+            for r in (pv.read_provenance(p, trust=trust) for _ in range(READS))}
+
+
+def test_a_signer_on_a_signer_list_and_a_tsa_list_is_trusted_on_every_read(tmp_path, chain):
+    """16 roots are on both C2PA lists. c2pa-rs 0.91.0 orders the anchor lists by a
+    HashSet, anew on every read, and names the first one a chain reaches whatever its
+    kind, so a signer under one of them read as trusted or, through the TSA list,
+    valid_untrusted. Measured before the fix: 10 trusted and 6 valid_untrusted of 16
+    reads, in either load order."""
+    _signer, ca_pem = chain
+    p = _write(tmp_path, "generated.jpg",
+               sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
+    signers = pv.Anchor("manifest", ca_pem, "synthetic signer list")
+    tsas = pv.Anchor("tsa", ca_pem, "synthetic TSA list")
+    for order in ((signers, tsas), (tsas, signers)):
+        assert _every_read(p, pv.TrustLists(order)) == {("trusted", "synthetic signer list")}
+
+
+def test_a_signer_on_two_signer_lists_is_vouched_for_by_the_first(tmp_path, chain):
+    """The examiner's list carries one more certificate, so it is not byte for byte the
+    first list (two identical lists of one kind share a trust_uri and c2pa-rs merges
+    them, which hid this case)."""
+    _signer, ca_pem = chain
+    _other_signer, other_ca = make_chain()
+    p = _write(tmp_path, "generated.jpg",
+               sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
+    trust = pv.TrustLists((pv.Anchor("manifest", ca_pem, "first signer list"),
+                           pv.Anchor("manifest", other_ca + ca_pem, "examiner signer anchors")))
+    assert _every_read(p, trust) == {("trusted", "first signer list")}
+
+
 def test_png_and_webp_carry_their_store_where_the_scan_looks(tmp_path, chain):
     for fmt, mime, where in (("PNG", "image/png", "PNG caBX"),
                              ("WEBP", "image/webp", "WebP C2PA")):

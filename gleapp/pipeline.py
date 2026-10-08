@@ -506,7 +506,7 @@ def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = T
         **counts, "scope": "processing" if ids is not None else
         ("all" if force else "unread" + (" and not checked" if retry else "")),
         "library": sorted(versions) or (provenance.library_available()[1] or "not used"),
-        "trust_lists": [a.describe() for a in trust.anchors]}))
+        "trust_lists": trust.describe()}))
     return counts
 
 
