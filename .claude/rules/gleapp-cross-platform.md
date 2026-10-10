@@ -1176,3 +1176,11 @@ no manifest, a BMP or ICO as unsupported (c2pa-rs 0.91.0).
 **Schema 19 adds four columns; NULL is "not read yet".** Processing reads what it processes
 and does not start reading an older case: on an E01 read in place that would pull every
 file out again. `gleapp provenance` and the gallery's button do it when asked.
+
+**A source-type class is worked out from the URI, so moving a term raises
+`provenance.DST_VOCABULARY`.** Every record keeps the digital source type URI it was
+declared with, and the class beside it is derived. `provenance.load` works each class
+out again from its URI, and `CaseDB.refresh_dst_classes` works the `c2pa_dst_class`
+column (the filter and the list) out again once per value of `DST_VOCABULARY`;
+`c2pa_info` is never rewritten. A build that moves a term to another class and leaves
+the constant alone leaves every case an older build read filtering under the older class.

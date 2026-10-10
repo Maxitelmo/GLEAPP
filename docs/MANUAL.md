@@ -1956,6 +1956,11 @@ generated. The declaration of a manifest that is not valid is still recorded, ma
 edit was made from) are listed with their own declaration, signer and state, so a
 generated picture inside an edit that declares nothing is visible.
 
+Each record keeps the source type URI exactly as declared, and the class is worked out
+from it by the GLEAPP reading the case. A case read before a term was moved to another
+class shows, filters and exports the class this version gives it; the record itself is
+never rewritten.
+
 A source type found only in **XMP**, outside any manifest, is recorded separately as
 an **unsigned declaration** and never folded into the state or the declared class.
 

@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-from . import vicdetails
+from . import provenance, vicdetails
 from .vendor import exoprobe
 
 SCHEMA_VERSION = 19
@@ -509,6 +509,7 @@ class CaseDB:
             "CREATE INDEX IF NOT EXISTS idx_files_exo_unset ON files(id) "
             "WHERE exo_cache IS NULL")
         self.fill_exo_cache()
+        self.refresh_dst_classes()
         cat_cols = {r["name"] for r in self.conn.execute(
             "PRAGMA table_info(categories)")}
         if "locked" not in cat_cols:
@@ -607,6 +608,37 @@ class CaseDB:
                     [(exo_cache_flag(r["name"], None, None), r["id"]) for r in rows])
                 self.conn.commit()
         return len(rows)
+
+    def refresh_dst_classes(self) -> int:
+        """Work ``c2pa_dst_class`` out again from the URI each record keeps, once
+        for each ``provenance.DST_VOCABULARY``, and return how many rows changed.
+        ``c2pa_info`` is never rewritten: it stays the record as it was read, and
+        ``provenance.load`` works its classes out again. A row an older build writes
+        into the case after this has run is not seen until the vocabulary changes."""
+        want = str(provenance.DST_VOCABULARY)
+        with self.lock:
+            if self.get_meta("c2pa_dst_vocabulary") == want:
+                return 0
+            # a record that declares nothing is "none" under any vocabulary; the
+            # pattern only spares reading those, and a record written another way
+            # is read in full
+            rows = self.conn.execute(
+                "SELECT id, c2pa_dst_class, c2pa_info FROM files "
+                "WHERE c2pa_info IS NOT NULL "
+                "AND c2pa_info NOT LIKE '%\"active_dst\": null%'").fetchall()
+            changed = []
+            for r in rows:
+                rec = provenance.load(r["c2pa_info"])
+                if rec is None:
+                    continue
+                cls = provenance.classify_dst(rec.get("active_dst"))
+                if cls != r["c2pa_dst_class"]:
+                    changed.append((cls, r["id"]))
+            if changed:
+                self.conn.executemany(
+                    "UPDATE files SET c2pa_dst_class = ? WHERE id = ?", changed)
+            self.set_meta("c2pa_dst_vocabulary", want)
+        return len(changed)
 
     def _refresh_exo_cache(self, file_id: int) -> None:
         """Set one row's ``exo_cache`` again after a write to a name it is read from."""

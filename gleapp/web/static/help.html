@@ -1828,6 +1828,10 @@ files an edit was made from) are listed with their own declaration, signer and s
 A source type found only in <strong>XMP</strong>, outside any manifest, is recorded
 separately as an <strong>unsigned declaration</strong> and never folded into the state
 or the declared class.</p>
+<p>Each record keeps the source type URI exactly as declared, and the class is worked out
+from it by the GLEAPP reading the case. A case read before a term was moved to another
+class shows, filters and exports the class this version gives it; the record itself is
+never rewritten.</p>
 
 <h3>Trust lists</h3>
 <p>GLEAPP carries the <strong>C2PA Trust List</strong> and the <strong>C2PA TSA Trust

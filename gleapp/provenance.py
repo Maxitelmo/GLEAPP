@@ -110,6 +110,12 @@ _DST_GROUPS = {
 }
 _DST_TERM_CLASS = {term: cls for cls, terms in _DST_GROUPS.items() for term in terms}
 _DST_NAMESPACES = ("cv.iptc.org/newscodes/digitalsourcetype/", "c2pa.org/digitalsourcetype/")
+# What a file declares is the URI, and every record keeps it; the class is worked out
+# from it. ``load`` works each class out again, and a case's c2pa_dst_class column is
+# worked out again once per value of this (``CaseDB.refresh_dst_classes``), so **a
+# build that moves a term to another class has to raise it**, or every case an older
+# build read keeps the older class in the column the filter and the list read.
+DST_VOCABULARY = 1
 
 # The codes C2PA's Asset Rubrics v1.0 (C2PA Conformance Task Force, 2026-08-06,
 # conformance-public asset-rubrics/asset-rubric-integrity.yml, CC BY 4.0) treat as
@@ -1256,12 +1262,30 @@ def xmp_text(record: dict | None) -> str:
     return f"{xmp.get('class')} ({UNSIGNED})" if xmp else ""
 
 
+def _reclassify(ingredients: Any) -> None:
+    for ing in ingredients if isinstance(ingredients, list) else []:
+        if isinstance(ing, dict):
+            if "dst_class" in ing:
+                ing["dst_class"] = classify_dst(ing.get("dst"))
+            _reclassify(ing.get("ingredients"))
+
+
 def load(info: str | None) -> dict | None:
-    """The record kept in ``files.c2pa_info``, or None."""
+    """The record kept in ``files.c2pa_info``, or None, with each class worked out
+    again from the URI it was decided from (``DST_VOCABULARY``). The stored text is
+    not changed: it stays the record as it was read."""
     if not info:
         return None
     try:
         rec = json.loads(info)
     except (TypeError, ValueError):
         return None
-    return rec if isinstance(rec, dict) else None
+    if not isinstance(rec, dict):
+        return None
+    if "dst_class" in rec:
+        rec["dst_class"] = classify_dst(rec.get("active_dst"))
+    _reclassify(rec.get("ingredients"))
+    xmp = rec.get("xmp_dst")
+    if isinstance(xmp, dict) and "class" in xmp:
+        xmp["class"] = classify_dst(xmp.get("uri"))
+    return rec
