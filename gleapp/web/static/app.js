@@ -650,6 +650,7 @@ const C2PA_DST_LABEL = {
   algorithmic: "Algorithmic",
   capture: "Capture",
   screen: "Screen capture",
+  virtual_recording: "Virtual event recording",
   human_edit: "Human edits",
   other: "Other",
   none: "None declared",

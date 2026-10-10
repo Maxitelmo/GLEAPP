@@ -1942,13 +1942,19 @@ The digital source type the active manifest's actions declare (C2PA 2.2,
 | Class | Terms |
 |---|---|
 | Generative AI | `trainedAlgorithmicMedia`, `trainedAlgorithmicData` |
-| Composite with AI | `compositeWithTrainedAlgorithmicMedia`, `compositeSynthetic`, `virtualRecording` |
+| Composite with AI | `compositeWithTrainedAlgorithmicMedia`, `compositeSynthetic` |
 | Algorithmic | `algorithmicMedia` |
 | Capture | `digitalCapture`, `computationalCapture`, `negativeFilm`, `positiveFilm`, `print` |
 | Screen capture | `screenCapture` |
+| Virtual event recording | `virtualRecording` |
 | Human edits | `humanEdits`, `minorHumanEdits`, `algorithmicallyEnhanced`, `composite`, `compositeCapture` |
 | Other | any other term |
 | None declared | the manifest declares none |
+
+A class whose name says AI holds only terms whose IPTC definition includes generative
+AI. *Virtual event recording* is, in IPTC's words, a live recording of a virtual event
+"based on Generative AI and/or captured elements": it may hold no AI at all, so it is a
+class of its own.
 
 A term is matched on its whole last segment, so a composite is never read as fully
 generated. The declaration of a manifest that is not valid is still recorded, marked
@@ -2033,7 +2039,9 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
 - C2PA Technical Specification 2.2: §14.3 (validation states), §14.4 (trust lists),
   §15.2.2 (status codes), §15.3 (displaying manifest information), §18.14.4.5
   (digital source type).
-- IPTC Digital Source Type NewsCodes vocabulary.
+- IPTC Digital Source Type NewsCodes vocabulary,
+  <https://cv.iptc.org/newscodes/digitalsourcetype/> (labels and definitions as read on
+  2026-10-10).
 - See also NIST AI 100-4 and SWGDE 18-I-001, which this manual has not been checked
   against section by section.
 
@@ -2176,7 +2184,8 @@ MIT license).
 - **C2PA Technical Specification**: Coalition for Content Provenance and Authenticity,
   CC BY 4.0. GLEAPP uses its status codes and digital source type identifiers.
 - **IPTC Digital Source Type NewsCodes**: International Press Telecommunications
-  Council, CC BY 4.0. GLEAPP uses the vocabulary's identifiers.
+  Council, CC BY 4.0. GLEAPP uses the vocabulary's identifiers and labels, and quotes
+  its definitions where a class needs one.
 - **c2pa-python**: Adobe and contributors (MIT OR Apache-2.0), with the c2pa-rs
   library inside it. An optional extra that validates signatures; GLEAPP's release
   builds do not include it.

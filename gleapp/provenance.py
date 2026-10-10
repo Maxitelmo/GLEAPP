@@ -65,7 +65,7 @@ STATE_SHORT = {
     "not_checked": "Not checked",
 }
 DST_CLASSES = ("generative_ai", "ai_composite", "algorithmic", "capture", "screen",
-               "human_edit", "other", "none")
+               "virtual_recording", "human_edit", "other", "none")
 # What each class of a declared digital source type is called on a screen or in a
 # report. They name the vocabulary group of what the file declares, nothing more.
 DST_CLASS_LABELS = {
@@ -74,6 +74,7 @@ DST_CLASS_LABELS = {
     "algorithmic": "Algorithmic",
     "capture": "Capture",
     "screen": "Screen capture",
+    "virtual_recording": "Virtual event recording",
     "human_edit": "Human edits",
     "other": "Other",
     "none": "None declared",
@@ -97,14 +98,20 @@ CAVEAT = (
 # http://c2pa.org/digitalsourcetype/ (C2PA 2.2 §18.14.4.5). A URI is matched on its
 # exact last segment, so compositeWithTrainedAlgorithmicMedia is never read as
 # trainedAlgorithmicMedia, and a term in no known namespace is "other".
+#
+# A class whose label names AI holds only terms whose IPTC definition includes
+# generative AI (vocabulary read 2026-10-10). virtualRecording is "Virtual event
+# recording", a live recording of a virtual event "based on Generative AI and/or
+# captured elements": it can hold no AI at all, so it is a class of its own.
+# compositeSynthetic, "Composite including generative AI elements", has at least one.
 _DST_GROUPS = {
     "generative_ai": ("trainedAlgorithmicMedia", "trainedAlgorithmicData"),
-    "ai_composite": ("compositeWithTrainedAlgorithmicMedia", "compositeSynthetic",
-                     "virtualRecording"),
+    "ai_composite": ("compositeWithTrainedAlgorithmicMedia", "compositeSynthetic"),
     "algorithmic": ("algorithmicMedia",),
     "capture": ("digitalCapture", "computationalCapture", "negativeFilm", "positiveFilm",
                 "print"),
     "screen": ("screenCapture",),
+    "virtual_recording": ("virtualRecording",),
     "human_edit": ("humanEdits", "minorHumanEdits", "algorithmicallyEnhanced",
                    "composite", "compositeCapture"),
 }
@@ -115,7 +122,7 @@ _DST_NAMESPACES = ("cv.iptc.org/newscodes/digitalsourcetype/", "c2pa.org/digital
 # worked out again once per value of this (``CaseDB.refresh_dst_classes``), so **a
 # build that moves a term to another class has to raise it**, or every case an older
 # build read keeps the older class in the column the filter and the list read.
-DST_VOCABULARY = 1
+DST_VOCABULARY = 2       # 2: virtualRecording left "Composite with AI"
 
 # The codes C2PA's Asset Rubrics v1.0 (C2PA Conformance Task Force, 2026-08-06,
 # conformance-public asset-rubrics/asset-rubric-integrity.yml, CC BY 4.0) treat as

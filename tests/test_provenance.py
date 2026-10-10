@@ -87,7 +87,7 @@ def _ingredient(child_label, label="c2pa.ingredient.v3", failure=(), title="ingr
     ("trainedAlgorithmicMedia", "generative_ai"),
     ("compositeWithTrainedAlgorithmicMedia", "ai_composite"),
     ("compositeSynthetic", "ai_composite"),
-    ("virtualRecording", "ai_composite"),
+    ("virtualRecording", "virtual_recording"),
     ("algorithmicMedia", "algorithmic"),
     ("digitalCapture", "capture"),
     ("computationalCapture", "capture"),
@@ -102,6 +102,28 @@ def _ingredient(child_label, label="c2pa.ingredient.v3", failure=(), title="ingr
 ])
 def test_each_iptc_term_falls_in_its_class(term, cls):
     assert pv.classify_dst(DST + term) == cls
+
+
+# The terms whose IPTC definition includes generative AI (Digital Source Type
+# vocabulary, https://cv.iptc.org/newscodes/digitalsourcetype/, read 2026-10-10),
+# and C2PA's trainedAlgorithmicData (C2PA 2.2 §18.14.4.5). Only these may fall in a
+# class whose label names AI: virtualRecording, a live recording of a virtual event
+# "based on Generative AI and/or captured elements" (IPTC), can hold no AI at all.
+AI_BY_DEFINITION = {"trainedAlgorithmicMedia", "trainedAlgorithmicData",
+                    "compositeWithTrainedAlgorithmicMedia", "compositeSynthetic"}
+
+
+def test_only_a_term_defined_as_generative_ai_falls_in_a_class_named_ai():
+    named = {term for cls, terms in pv._DST_GROUPS.items()  # pylint: disable=protected-access
+             if "AI" in pv.DST_CLASS_LABELS[cls].split() for term in terms}
+    assert named == AI_BY_DEFINITION
+
+
+def test_a_virtual_event_recording_is_not_an_ai_class():
+    cls = pv.classify_dst(DST + "virtualRecording")
+    assert cls == "virtual_recording"
+    assert pv.DST_CLASS_LABELS[cls] == "Virtual event recording"
+    assert "AI" not in pv.DST_CLASS_LABELS[cls].split()
 
 
 def test_the_c2pa_namespace_terms_are_classified():

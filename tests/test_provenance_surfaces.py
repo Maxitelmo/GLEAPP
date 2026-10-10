@@ -163,6 +163,16 @@ def test_the_list_view_offers_three_columns_and_never_ships_the_whole_record():
         assert set(re.findall(r"(\w+):", body)) == set(vocab), name
 
 
+def test_the_gallery_names_each_class_the_way_the_module_does():
+    js = (REPO / "gleapp/web/static/app.js").read_text(encoding="utf-8")
+    body = re.search(r"C2PA_DST_LABEL = \{(.*?)\};", js, re.S).group(1)
+    assert dict(re.findall(r'(\w+): "([^"]*)"', body)) == pv.DST_CLASS_LABELS
+    page = (REPO / "gleapp/web/templates/index.html").read_text(encoding="utf-8")
+    body = re.search(r'<select id="fc2padst">(.*?)</select>', page, re.S).group(1)
+    options = dict(re.findall(r'<option value="(\w+)">([^<]*)</option>', body))
+    assert options == pv.DST_CLASS_LABELS
+
+
 def test_the_sidebar_filters_offer_the_vocabulary():
     page = (REPO / "gleapp/web/templates/index.html").read_text(encoding="utf-8")
     for sel, expected in (("fc2pa", {"", "any", "unread", *pv.STATES}),

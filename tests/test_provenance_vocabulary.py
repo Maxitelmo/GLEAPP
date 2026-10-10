@@ -96,6 +96,25 @@ def case_root(tmp_path):
     return tmp_path / "case", ids
 
 
+def test_a_virtual_recording_read_as_an_ai_composite_is_no_longer_one(case_root):
+    """Vocabulary 1 put virtualRecording under "Composite with AI"."""
+    root, ids = case_root
+    record = {"state": "valid_untrusted", "codes": {}, "signer": None,
+              "active_dst": DST + "virtualRecording", "dst_class": "ai_composite",
+              "ingredients": [], "xmp_dst": None}
+    c = open_case(root)
+    try:
+        c.db.update_file(ids["generated.jpg"], **pv.columns(record))
+        c.db.set_meta("c2pa_dst_vocabulary", "1")
+        c.db.commit()
+    finally:
+        c.close()
+    assert _column(root, ids["generated.jpg"])[0] == "virtual_recording"
+    stored = json.dumps(record, sort_keys=True)
+    assert _column(root, ids["generated.jpg"])[1] == stored
+    assert pv.load(stored)["dst_class"] == "virtual_recording"
+
+
 def test_a_new_case_starts_on_this_vocabulary(tmp_path):
     c = open_case(tmp_path / "case", create=True, examiner="t")
     try:

@@ -1813,14 +1813,19 @@ are kept with each record.</p>
 <table>
   <tr><th>Class</th><th>Terms</th></tr>
   <tr><td>Generative AI</td><td><code>trainedAlgorithmicMedia</code>, <code>trainedAlgorithmicData</code></td></tr>
-  <tr><td>Composite with AI</td><td><code>compositeWithTrainedAlgorithmicMedia</code>, <code>compositeSynthetic</code>, <code>virtualRecording</code></td></tr>
+  <tr><td>Composite with AI</td><td><code>compositeWithTrainedAlgorithmicMedia</code>, <code>compositeSynthetic</code></td></tr>
   <tr><td>Algorithmic</td><td><code>algorithmicMedia</code></td></tr>
   <tr><td>Capture</td><td><code>digitalCapture</code>, <code>computationalCapture</code>, <code>negativeFilm</code>, <code>positiveFilm</code>, <code>print</code></td></tr>
   <tr><td>Screen capture</td><td><code>screenCapture</code></td></tr>
+  <tr><td>Virtual event recording</td><td><code>virtualRecording</code></td></tr>
   <tr><td>Human edits</td><td><code>humanEdits</code>, <code>minorHumanEdits</code>, <code>algorithmicallyEnhanced</code>, <code>composite</code>, <code>compositeCapture</code></td></tr>
   <tr><td>Other</td><td>any other term</td></tr>
   <tr><td>None declared</td><td>the manifest declares none</td></tr>
 </table>
+<p>A class whose name says AI holds only terms whose IPTC definition includes generative
+AI. <em>Virtual event recording</em> is, in IPTC's words, a live recording of a virtual event
+&ldquo;based on Generative AI and/or captured elements&rdquo;: it may hold no AI at all, so
+it is a class of its own.</p>
 <p>A term is matched on its whole last segment, so a composite is never read as fully
 generated. The declaration of a manifest that is not valid is still recorded, marked
 <strong>not backed by a valid signature</strong> (C2PA 2.2, §15.3). Ingredients (the
@@ -1880,7 +1885,9 @@ process, a batch at a time, so a fault in it costs one file and never the run.</
 <h3>References</h3>
 <ul>
   <li>C2PA Technical Specification 2.2: §14.3, §14.4, §15.2.2, §15.3, §18.14.4.5.</li>
-  <li>IPTC Digital Source Type NewsCodes vocabulary.</li>
+  <li>IPTC Digital Source Type NewsCodes vocabulary,
+    https://cv.iptc.org/newscodes/digitalsourcetype/ (labels and definitions as read on
+    2026-10-10).</li>
   <li>See also NIST AI 100-4 and SWGDE 18-I-001, which this manual has not been checked
     against section by section.</li>
 </ul>
@@ -2026,7 +2033,7 @@ MIT license).</p>
     type identifiers.</li>
   <li><strong>IPTC Digital Source Type NewsCodes</strong>: International Press
     Telecommunications Council, CC&nbsp;BY&nbsp;4.0. GLEAPP uses the vocabulary's
-    identifiers.</li>
+    identifiers and labels, and quotes its definitions where a class needs one.</li>
   <li><strong>c2pa-python</strong>: Adobe and contributors (MIT OR Apache-2.0), with the
     c2pa-rs library inside it. An optional extra that validates signatures; GLEAPP's
     release builds do not include it.</li>
