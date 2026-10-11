@@ -99,6 +99,12 @@ def test_what_absence_does_not_mean_is_told_without_a_model_a_value_or_a_hash():
         assert not re.search(r"\d", section.replace("C2PA", "")), section
 
 
+def test_both_manuals_say_a_listed_signer_of_an_invalid_manifest_vouches_for_nothing():
+    plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
+    for doc in (_flat(_manual()), plain):
+        assert "names who signed the manifest, not who stands behind this content" in doc
+
+
 def test_the_help_page_links_its_new_section():
     page = _help()
     assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page

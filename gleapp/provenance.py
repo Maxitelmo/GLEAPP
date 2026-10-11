@@ -58,6 +58,7 @@ STATE_LABELS = {
     "trusted": "Valid, signer on a trust list",
     "not_checked": "Not checked",
 }
+_VALID = ("valid_untrusted", "trusted")       # the states whose signature validates
 # The same states, short enough for a list column (16 characters at most).
 STATE_SHORT = {
     "absent": "None",
@@ -1353,7 +1354,13 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if actions:
         rows.append(("Declared actions", actions))
     if record.get("trusted_by"):
-        rows.append(("Signer's trust list", str(record["trusted_by"])))
+        listed = str(record["trusted_by"])
+        if record.get("state") not in _VALID:
+            # a fact about the certificate, which vouches for nothing in a manifest
+            # that does not validate (C2PA 2.2 §15.3)
+            listed += ("; the manifest is not valid, so this names who signed it, "
+                       "not who stands behind this content")
+        rows.append(("Signer's trust list", listed))
     if record.get("hard_binding_mismatch"):
         rows.append(("Hard binding", "does not match the content the manifest was signed "
                      "for (for example, the content changed after signing, or the manifest "
@@ -1379,7 +1386,6 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
 
 
 DECLARATION_NOTE = "A declaration, not a finding."
-_VALID = ("valid_untrusted", "trusted")
 
 
 def _ai_ingredient(ingredients: Any) -> dict | None:

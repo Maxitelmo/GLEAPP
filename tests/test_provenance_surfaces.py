@@ -144,6 +144,20 @@ def test_a_valid_state_names_the_signer_and_the_trust_list_and_nothing_more():
     assert "trusted" in pv.STATES and "valid_untrusted" in pv.STATES
 
 
+def test_a_listed_signer_of_a_manifest_that_is_not_valid_names_who_signed_only():
+    """A manifest can be signed by a listed signer and still not match the content
+    (carried over from other content, or the content changed). The list stays, as a
+    fact about the certificate, and says it does not vouch for this content."""
+    for name in ("changed.jpg",):
+        rec = dict(RECORDS[name], trusted_by="C2PA Trust List (synthetic)")
+        assert rec["state"] == "invalid"
+        assert dict(pv.describe(rec))["Signer's trust list"] == (
+            "C2PA Trust List (synthetic); the manifest is not valid, so this names who "
+            "signed it, not who stands behind this content")
+    rec = dict(RECORDS["changed.jpg"], state="malformed", trusted_by="Examiner anchors")
+    assert "not who stands behind this content" in dict(pv.describe(rec))["Signer's trust list"]
+
+
 def test_no_label_or_description_states_a_finding():
     words = ("detected", "detection", "score", "probab", "likelihood", "confidence",
              "fake", "verdict")

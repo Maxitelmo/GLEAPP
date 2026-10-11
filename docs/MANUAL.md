@@ -2024,7 +2024,9 @@ Set them for every case in the app's config, or for one run on the command line
 A list that cannot be read stops the reading with that reason; GLEAPP never falls back
 to another list silently. Each record lists the trust lists it was read with, by
 label and SHA-256 (never by the file's path on your machine), and for a signer on a
-trust list names the one it chained to. A signer that chains only to the **TSA** list
+trust list names the one it chained to. When the manifest is not valid, that row says it
+names who signed the manifest, not who stands behind this content: a manifest signed by a
+listed signer and carried over to other content still chains to the list. A signer that chains only to the **TSA** list
 is recorded as valid with the signer not on a trust list: that list vouches for
 time-stamping authorities, not signers.
 
