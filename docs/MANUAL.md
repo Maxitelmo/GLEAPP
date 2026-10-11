@@ -1996,6 +1996,13 @@ a GLEAPP that did not keep actions says so instead, and `gleapp provenance --for
 reads it again. They show in the details pane, the HTML report's Content Credentials
 field and LAVA's Content Credentials Detail.
 
+### What a state does not mean
+
+In files examined for this section, object erasure with Samsung Galaxy AI and AI edits
+made on a Xiaomi phone left no AI declaration in the metadata (no C2PA manifest, no XMP
+digital source type), only traces of editing. No Content Credentials, or a manifest that
+declares no AI source type, says nothing about whether AI was used.
+
 ### Trust lists
 
 GLEAPP carries the **C2PA Trust List** and the **C2PA TSA Trust List** as published
