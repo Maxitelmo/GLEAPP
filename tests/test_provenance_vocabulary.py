@@ -115,6 +115,26 @@ def test_a_virtual_recording_read_as_an_ai_composite_is_no_longer_one(case_root)
     assert pv.load(stored)["dst_class"] == "virtual_recording"
 
 
+@pytest.mark.parametrize("term, cls", [("composite", "composite"),
+                                       ("compositeCapture", "composite_capture"),
+                                       ("algorithmicallyEnhanced", "algorithmically_altered")])
+def test_a_term_read_as_a_human_edit_is_no_longer_one(case_root, term, cls):
+    """Vocabularies 1 and 2 put these under "Human edits"."""
+    root, ids = case_root
+    record = {"state": "valid_untrusted", "codes": {}, "signer": None,
+              "active_dst": DST + term, "dst_class": "human_edit",
+              "ingredients": [], "xmp_dst": None}
+    c = open_case(root)
+    try:
+        c.db.update_file(ids["generated.jpg"], **pv.columns(record))
+        c.db.set_meta("c2pa_dst_vocabulary", "2")
+        c.db.commit()
+    finally:
+        c.close()
+    assert _column(root, ids["generated.jpg"])[0] == cls
+    assert pv.load(json.dumps(record))["dst_class"] == cls
+
+
 def test_a_new_case_starts_on_this_vocabulary(tmp_path):
     c = open_case(tmp_path / "case", create=True, examiner="t")
     try:

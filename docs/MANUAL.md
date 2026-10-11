@@ -1944,10 +1944,13 @@ The digital source type the active manifest's actions declare (C2PA 2.2,
 | Generative AI | `trainedAlgorithmicMedia`, `trainedAlgorithmicData` |
 | Composite with AI | `compositeWithTrainedAlgorithmicMedia`, `compositeSynthetic` |
 | Algorithmic | `algorithmicMedia` |
+| Algorithmically-altered media | `algorithmicallyEnhanced` |
 | Capture | `digitalCapture`, `computationalCapture`, `negativeFilm`, `positiveFilm`, `print` |
+| Composite of captured elements | `compositeCapture` |
+| Composite of elements | `composite` |
 | Screen capture | `screenCapture` |
 | Virtual event recording | `virtualRecording` |
-| Human edits | `humanEdits`, `minorHumanEdits`, `algorithmicallyEnhanced`, `composite`, `compositeCapture` |
+| Human edits | `humanEdits`, `minorHumanEdits` |
 | Other | any other term |
 | None declared | the manifest declares none |
 
@@ -1955,6 +1958,14 @@ A class whose name says AI holds only terms whose IPTC definition includes gener
 AI. *Virtual event recording* is, in IPTC's words, a live recording of a virtual event
 "based on Generative AI and/or captured elements": it may hold no AI at all, so it is a
 class of its own.
+
+*Human edits* holds only `humanEdits` and `minorHumanEdits`. The other terms each have a
+class of their own under IPTC's label, because none of them is a human's edit:
+*Composite of elements*, whose elements may or may not be generative AI (so it is
+neither an AI class nor an edit); *Composite of captured elements*, every element
+captured from real life; and *Algorithmically-altered media* (`algorithmicallyEnhanced`),
+changed by an algorithm without changing its main content, such as focus or noise
+reduction.
 
 A term is matched on its whole last segment, so a composite is never read as fully
 generated. The declaration of a manifest that is not valid is still recorded, marked

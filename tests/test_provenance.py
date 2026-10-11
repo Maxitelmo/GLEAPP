@@ -97,7 +97,9 @@ def _ingredient(child_label, label="c2pa.ingredient.v3", failure=(), title="ingr
     ("screenCapture", "screen"),
     ("humanEdits", "human_edit"),
     ("minorHumanEdits", "human_edit"),
-    ("composite", "human_edit"),
+    ("composite", "composite"),
+    ("compositeCapture", "composite_capture"),
+    ("algorithmicallyEnhanced", "algorithmically_altered"),
     ("dataDrivenMedia", "other"),
 ])
 def test_each_iptc_term_falls_in_its_class(term, cls):
@@ -124,6 +126,24 @@ def test_a_virtual_event_recording_is_not_an_ai_class():
     assert cls == "virtual_recording"
     assert pv.DST_CLASS_LABELS[cls] == "Virtual event recording"
     assert "AI" not in pv.DST_CLASS_LABELS[cls].split()
+
+
+def test_human_edits_holds_only_the_edits_iptc_attributes_to_a_human():
+    assert set(pv._DST_GROUPS["human_edit"]) == {  # pylint: disable=protected-access
+        "humanEdits", "minorHumanEdits"}
+
+
+@pytest.mark.parametrize("term, label", [
+    # IPTC's labels: elements that may or may not be generative AI; elements that are
+    # all captured from real life; an algorithm's change that leaves the main content
+    ("composite", "Composite of elements"),
+    ("compositeCapture", "Composite of captured elements"),
+    ("algorithmicallyEnhanced", "Algorithmically-altered media"),
+])
+def test_a_term_that_is_not_a_human_edit_is_named_as_iptc_names_it(term, label):
+    cls = pv.classify_dst(DST + term)
+    assert pv.DST_CLASS_LABELS[cls] == label
+    assert pv._DST_GROUPS[cls] == (term,)  # pylint: disable=protected-access
 
 
 def test_the_c2pa_namespace_terms_are_classified():

@@ -1815,10 +1815,13 @@ are kept with each record.</p>
   <tr><td>Generative AI</td><td><code>trainedAlgorithmicMedia</code>, <code>trainedAlgorithmicData</code></td></tr>
   <tr><td>Composite with AI</td><td><code>compositeWithTrainedAlgorithmicMedia</code>, <code>compositeSynthetic</code></td></tr>
   <tr><td>Algorithmic</td><td><code>algorithmicMedia</code></td></tr>
+  <tr><td>Algorithmically-altered media</td><td><code>algorithmicallyEnhanced</code></td></tr>
   <tr><td>Capture</td><td><code>digitalCapture</code>, <code>computationalCapture</code>, <code>negativeFilm</code>, <code>positiveFilm</code>, <code>print</code></td></tr>
+  <tr><td>Composite of captured elements</td><td><code>compositeCapture</code></td></tr>
+  <tr><td>Composite of elements</td><td><code>composite</code></td></tr>
   <tr><td>Screen capture</td><td><code>screenCapture</code></td></tr>
   <tr><td>Virtual event recording</td><td><code>virtualRecording</code></td></tr>
-  <tr><td>Human edits</td><td><code>humanEdits</code>, <code>minorHumanEdits</code>, <code>algorithmicallyEnhanced</code>, <code>composite</code>, <code>compositeCapture</code></td></tr>
+  <tr><td>Human edits</td><td><code>humanEdits</code>, <code>minorHumanEdits</code></td></tr>
   <tr><td>Other</td><td>any other term</td></tr>
   <tr><td>None declared</td><td>the manifest declares none</td></tr>
 </table>
@@ -1826,6 +1829,13 @@ are kept with each record.</p>
 AI. <em>Virtual event recording</em> is, in IPTC's words, a live recording of a virtual event
 &ldquo;based on Generative AI and/or captured elements&rdquo;: it may hold no AI at all, so
 it is a class of its own.</p>
+<p><em>Human edits</em> holds only <code>humanEdits</code> and <code>minorHumanEdits</code>.
+The other terms each have a class of their own under IPTC's label, because none of them is
+a human's edit: <em>Composite of elements</em>, whose elements may or may not be generative
+AI (so it is neither an AI class nor an edit); <em>Composite of captured elements</em>,
+every element captured from real life; and <em>Algorithmically-altered media</em>
+(<code>algorithmicallyEnhanced</code>), changed by an algorithm without changing its main
+content, such as focus or noise reduction.</p>
 <p>A term is matched on its whole last segment, so a composite is never read as fully
 generated. The declaration of a manifest that is not valid is still recorded, marked
 <strong>not backed by a valid signature</strong> (C2PA 2.2, §15.3). Ingredients (the
