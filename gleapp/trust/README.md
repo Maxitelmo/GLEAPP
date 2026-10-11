@@ -1,9 +1,10 @@
 # C2PA trust lists
 
-GLEAPP records a Content Credentials signature as **trusted** only when the signer's
-certificate chains to an anchor on a list it holds. C2PA 2.2 §14.4.1 and §14.4.2 say a
-validator's anchors include the C2PA Trust List (for claim signers) and the C2PA TSA
-Trust List (for time-stamping authorities). These are the copies GLEAPP carries:
+GLEAPP records a Content Credentials signature as **Valid, signer on a trust list** (stored
+as `trusted`) only when the signer's certificate chains to an anchor on a list it holds.
+C2PA 2.2 §14.4.1 and §14.4.2 say a validator's anchors include the C2PA Trust List (for
+claim signers) and the C2PA TSA Trust List (for time-stamping authorities). These are the
+copies GLEAPP carries:
 
 | file | what it anchors | SHA-256 | certificates | last changed in |
 | --- | --- | --- | ---: | --- |
@@ -31,9 +32,10 @@ examiner's anchors are **added** to these lists, never put in their place, and t
 thing that can stand in for a copy here is a newer copy of the same C2PA list. Both are
 set in the app config (`appconfig.set_c2pa_trust_lists`) or for one run on the command
 line. Every record lists the anchors it was read with, by label and SHA-256 and never
-by the file's path on the examiner's machine, and names the one a trusted signer
+by the file's path on the examiner's machine, and names the one a listed signer
 chained to (`trusted_by`), which the reader reports as the list's `trust_uri`.
 
 The TSA list vouches for time-stamping authorities, not for signers. c2pa-rs 0.91.0
 still reports Trusted for a signer that chains only to a TSA anchor; GLEAPP records that
-as valid but not trusted (`gleapp/provenance.py`, `_state`).
+as Valid, signer not on a trust list (`valid_untrusted`), in `_state` of
+`gleapp/provenance.py`.

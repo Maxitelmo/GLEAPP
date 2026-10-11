@@ -105,6 +105,13 @@ def test_both_manuals_say_a_listed_signer_of_an_invalid_manifest_vouches_for_not
         assert "names who signed the manifest, not who stands behind this content" in doc
 
 
+def test_the_trust_list_readme_names_the_states_by_their_labels():
+    readme = _flat((REPO / "gleapp/trust/README.md").read_text(encoding="utf-8"))
+    assert f"**{pv.STATE_LABELS['trusted']}** (stored as `trusted`)" in readme
+    assert f"{pv.STATE_LABELS['valid_untrusted']} (`valid_untrusted`)" in readme
+    assert "**trusted**" not in readme and "valid but not trusted" not in readme
+
+
 def test_the_help_page_links_its_new_section():
     page = _help()
     assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page
