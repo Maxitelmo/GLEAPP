@@ -1964,8 +1964,8 @@ class of their own under IPTC's label, because none of them is a human's edit:
 *Composite of elements*, whose elements may or may not be generative AI (so it is
 neither an AI class nor an edit); *Composite of captured elements*, every element
 captured from real life; and *Algorithmically-altered media* (`algorithmicallyEnhanced`),
-changed by an algorithm without changing its main content, such as focus or noise
-reduction.
+changed by an algorithm, initiated or configured by a human, without changing its main
+content, such as sharpening or noise reduction.
 
 A term IPTC has retired is still read and keeps its class, since a file can still
 declare it; wherever GLEAPP shows the term, it adds *retired by IPTC*.

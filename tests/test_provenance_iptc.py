@@ -82,3 +82,20 @@ def test_what_the_manuals_quote_from_iptc_is_iptc_s_words():
                                 (REPO / "gleapp/web/static/help.html").read_text(encoding="utf-8")))
     for doc in (manual, page):
         assert quote in " ".join(doc.split())
+
+
+def test_the_manuals_give_iptc_s_examples_of_an_algorithmic_alteration():
+    """IPTC's examples for algorithmicallyEnhanced are sharpening and noise reduction,
+    on a change a human initiated or configured. "Focus", an earlier wording here, is
+    not among them."""
+    definition = _definition("algorithmicallyEnhanced")
+    assert "sharpening" in definition and "noise reduction" in definition
+    assert "initiated or configured by a human" in definition
+    manual = (REPO / "docs/MANUAL.md").read_text(encoding="utf-8")
+    page = html.unescape(re.sub(r"<[^>]+>", "",
+                                (REPO / "gleapp/web/static/help.html").read_text(encoding="utf-8")))
+    for doc in (manual, page):
+        flat = " ".join(doc.split())
+        assert "initiated or configured by a human" in flat
+        assert "such as sharpening or noise reduction" in flat
+        assert "focus or noise reduction" not in flat

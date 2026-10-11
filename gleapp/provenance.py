@@ -118,8 +118,8 @@ CAVEAT = (
 # whose elements may or may not be generative AI, so calling it an edit would deny
 # what the term leaves open; "Composite of captured elements", every element captured
 # from real life; and "Algorithmically-altered media" (algorithmicallyEnhanced), an
-# algorithm's change that leaves the main content as it was, such as focus or noise
-# reduction.
+# algorithm's change, initiated or configured by a human, that leaves the main content
+# as it was, such as sharpening or noise reduction.
 _DST_GROUPS = {
     "generative_ai": ("trainedAlgorithmicMedia", "trainedAlgorithmicData"),
     "ai_composite": ("compositeWithTrainedAlgorithmicMedia", "compositeSynthetic"),
