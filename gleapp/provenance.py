@@ -98,9 +98,9 @@ PLANTED = "C2PA not checked: a c2pa library sits in the working directory"
 CAVEAT = (
     "Content Credentials record what the signer declared. A valid signature shows the "
     "credentials were not changed after signing; who signed is established only when "
-    "the signer's certificate is on a trust list GLEAPP holds (trusted). An AI source "
-    "type is a declaration, not a finding. Absence of credentials does not indicate "
-    "authenticity: many platforms and tools remove them."
+    "the signer's certificate is on a trust list GLEAPP holds (Valid, signer on a trust "
+    "list). An AI source type is a declaration, not a finding. Absence of credentials "
+    "does not indicate authenticity: many platforms and tools remove them."
 )
 
 # The digital source type vocabulary, grouped. IPTC's terms live under

@@ -852,12 +852,15 @@ def test_the_reader_settings_fetch_nothing_and_load_both_lists():
 
 
 def test_the_caveat_is_the_fixed_text():
+    """It names the state by the label every surface shows; the stored value
+    ("trusted") was what it named until the label stopped saying "Trusted"."""
     assert pv.CAVEAT == (
         "Content Credentials record what the signer declared. A valid signature shows the "
         "credentials were not changed after signing; who signed is established only when "
-        "the signer's certificate is on a trust list GLEAPP holds (trusted). An AI source "
-        "type is a declaration, not a finding. Absence of credentials does not indicate "
-        "authenticity: many platforms and tools remove them.")
+        "the signer's certificate is on a trust list GLEAPP holds (Valid, signer on a trust "
+        "list). An AI source type is a declaration, not a finding. Absence of credentials "
+        "does not indicate authenticity: many platforms and tools remove them.")
+    assert f"({pv.STATE_LABELS['trusted']})" in pv.CAVEAT
 
 
 def test_the_module_imports_no_network_library():

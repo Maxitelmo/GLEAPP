@@ -1908,9 +1908,9 @@ synthetic, it gives no score, and nothing here sets or changes a category.
 
 > Content Credentials record what the signer declared. A valid signature shows the
 > credentials were not changed after signing; who signed is established only when
-> the signer's certificate is on a trust list GLEAPP holds (trusted). An AI source
-> type is a declaration, not a finding. Absence of credentials does not indicate
-> authenticity: many platforms and tools remove them.
+> the signer's certificate is on a trust list GLEAPP holds (Valid, signer on a trust
+> list). An AI source type is a declaration, not a finding. Absence of credentials does
+> not indicate authenticity: many platforms and tools remove them.
 
 That paragraph is printed wherever these fields are explained: the details pane, the
 HTML report when its Content Credentials field is chosen, the JSON export and the
