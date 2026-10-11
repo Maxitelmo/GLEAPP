@@ -1,7 +1,8 @@
 """The gallery marks a file that declares generative AI, and says how it is backed.
 
 A badge reads "AI declared" when the file's own manifest or its XMP declares a term
-in a class named AI ("Generative AI", "Composite with AI"), and "AI in ingredient"
+in a class named AI ("Generative AI", "Edited using Generative AI", "Composite
+including generative AI elements"), and "AI in ingredient"
 when only an ingredient does. Its style and tooltip say what stands behind the
 declaration: a valid signature, a manifest that is not valid, or nothing at all
 (XMP). A file that declares nothing gets no mark, because absence says nothing;
@@ -74,7 +75,7 @@ def _xmp_only(term):
 
 def test_the_classes_a_badge_marks_are_the_ones_named_ai():
     named = {c for c, label in pv.DST_CLASS_LABELS.items() if "AI" in label.split()}
-    assert pv.AI_CLASSES == named == {"generative_ai", "ai_composite"}
+    assert pv.AI_CLASSES == named == {"generative_ai", "ai_edited", "ai_composite"}
     assert set(pv.AI_TERMS) == {t for c in named for t in pv._DST_GROUPS[c]}  # pylint: disable=protected-access
 
 
@@ -91,7 +92,8 @@ def test_a_declaration_from_a_manifest_that_is_not_valid_is_not_backed():
                                      failure=("assertion.dataHash.mismatch",)))
     assert decl["badge"] == "AI declared" and decl["backed"] is False
     assert decl["text"] == "AI declared, not backed by a valid signature"
-    assert "compositeSynthetic (Composite with AI), not backed by a valid signature " \
+    assert "compositeSynthetic (Composite including generative AI elements), not backed " \
+           "by a valid signature " \
            "(Invalid)" in decl["title"]
     assert decl["title"].endswith(NOTE)
 

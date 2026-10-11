@@ -85,7 +85,7 @@ def _ingredient(child_label, label="c2pa.ingredient.v3", failure=(), title="ingr
 
 @pytest.mark.parametrize("term, cls", [
     ("trainedAlgorithmicMedia", "generative_ai"),
-    ("compositeWithTrainedAlgorithmicMedia", "ai_composite"),
+    ("compositeWithTrainedAlgorithmicMedia", "ai_edited"),
     ("compositeSynthetic", "ai_composite"),
     ("virtualRecording", "virtual_recording"),
     ("algorithmicMedia", "algorithmic"),
@@ -189,7 +189,7 @@ def test_the_c2pa_namespace_terms_are_classified():
 def test_a_term_is_matched_on_its_whole_last_segment_only():
     """compositeWithTrainedAlgorithmicMedia contains trainedAlgorithmicMedia; a
     substring match would call every AI composite fully generated."""
-    assert pv.classify_dst(DST + "compositeWithTrainedAlgorithmicMedia") == "ai_composite"
+    assert pv.classify_dst(DST + "compositeWithTrainedAlgorithmicMedia") == "ai_edited"
     assert pv.classify_dst(DST + "trainedAlgorithmicMediaX") == "other"
     assert pv.classify_dst("https://example.invalid/digitalsourcetype/trainedAlgorithmicMedia") \
         == "other"
@@ -364,7 +364,7 @@ def test_ingredients_are_followed_recursively_and_a_cycle_is_cut():
     parent = _manifest(ACTIVE, ingredients=[_ingredient(CHILD)])
     rec = pv.parse_manifest_store(_store(parent, others=[child, grand]))
     [c] = rec["ingredients"]
-    assert c["dst_class"] == "ai_composite"
+    assert c["dst_class"] == "ai_edited"
     [g] = c["ingredients"]
     assert g["dst_class"] == "generative_ai"
     [back] = g["ingredients"]
@@ -607,7 +607,7 @@ def test_quicktime_udta_xmp(tmp_path):
     p.write_bytes(_box(b"ftyp", b"qt  " + bytes(4) + b"qt  ") + moov)
     blocks = pv.scan_blocks(p)
     assert blocks.mime == "video/quicktime" and blocks.known
-    assert pv.xmp_declaration(blocks.xmp)["class"] == "ai_composite"
+    assert pv.xmp_declaration(blocks.xmp)["class"] == "ai_edited"
 
 
 def test_heif_xmp_item_located_through_iloc(tmp_path):

@@ -1942,7 +1942,8 @@ The digital source type the active manifest's actions declare (C2PA 2.2,
 | Class | Terms |
 |---|---|
 | Generative AI | `trainedAlgorithmicMedia`, `trainedAlgorithmicData` |
-| Composite with AI | `compositeWithTrainedAlgorithmicMedia`, `compositeSynthetic` |
+| Edited using Generative AI | `compositeWithTrainedAlgorithmicMedia` |
+| Composite including generative AI elements | `compositeSynthetic` |
 | Algorithmic | `algorithmicMedia` |
 | Algorithmically-altered media | `algorithmicallyEnhanced` |
 | Capture | `digitalCapture`, `computationalCapture`, `negativeFilm`, `positiveFilm`, `print` |
@@ -1957,7 +1958,10 @@ The digital source type the active manifest's actions declare (C2PA 2.2,
 A class whose name says AI holds only terms whose IPTC definition includes generative
 AI. *Virtual event recording* is, in IPTC's words, a live recording of a virtual event
 "based on Generative AI and/or captured elements": it may hold no AI at all, so it is a
-class of its own.
+class of its own. *Edited using Generative AI* (`compositeWithTrainedAlgorithmicMedia`) is
+IPTC's label for an edit made with a generative model, such as inpainting or outpainting;
+IPTC does not call it a composite, whatever its identifier says, so it is a class apart
+from *Composite including generative AI elements* (`compositeSynthetic`).
 
 *Human edits* holds only `humanEdits` and `minorHumanEdits`. The other terms each have a
 class of their own under IPTC's label, because none of them is a human's edit:
@@ -2056,9 +2060,9 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
 - **Sidebar filters** (Content Credentials section): **State** (has Content
   Credentials, each state, not read yet) and **Declared source type**.
 - **Gallery mark**: a tile whose file declares a class named AI (*Generative AI*,
-  *Composite with AI*) carries **AI declared**, solid when a valid signature backs the
-  declaration and dashed when the manifest is not valid or the declaration is only in
-  XMP; a file whose own manifest declares none but an ingredient does carries **AI in
+  *Edited using Generative AI*, *Composite including generative AI elements*) carries
+  **AI declared**, solid when a valid signature backs the declaration and dashed when
+  the manifest is not valid or the declaration is only in XMP; a file whose own manifest declares none but an ingredient does carries **AI in
   ingredient**. Hover it for what is declared, by what and in which state. It is a
   declaration, not a finding, and it changes no category. A file with no mark may still
   have been made with AI: see *What a state does not mean* above.

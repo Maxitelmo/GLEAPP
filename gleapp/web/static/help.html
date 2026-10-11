@@ -1813,7 +1813,8 @@ are kept with each record.</p>
 <table>
   <tr><th>Class</th><th>Terms</th></tr>
   <tr><td>Generative AI</td><td><code>trainedAlgorithmicMedia</code>, <code>trainedAlgorithmicData</code></td></tr>
-  <tr><td>Composite with AI</td><td><code>compositeWithTrainedAlgorithmicMedia</code>, <code>compositeSynthetic</code></td></tr>
+  <tr><td>Edited using Generative AI</td><td><code>compositeWithTrainedAlgorithmicMedia</code></td></tr>
+  <tr><td>Composite including generative AI elements</td><td><code>compositeSynthetic</code></td></tr>
   <tr><td>Algorithmic</td><td><code>algorithmicMedia</code></td></tr>
   <tr><td>Algorithmically-altered media</td><td><code>algorithmicallyEnhanced</code></td></tr>
   <tr><td>Capture</td><td><code>digitalCapture</code>, <code>computationalCapture</code>, <code>negativeFilm</code>, <code>positiveFilm</code>, <code>print</code></td></tr>
@@ -1828,7 +1829,11 @@ are kept with each record.</p>
 <p>A class whose name says AI holds only terms whose IPTC definition includes generative
 AI. <em>Virtual event recording</em> is, in IPTC's words, a live recording of a virtual event
 &ldquo;based on Generative AI and/or captured elements&rdquo;: it may hold no AI at all, so
-it is a class of its own.</p>
+it is a class of its own. <em>Edited using Generative AI</em>
+(<code>compositeWithTrainedAlgorithmicMedia</code>) is IPTC's label for an edit made with a
+generative model, such as inpainting or outpainting; IPTC does not call it a composite,
+whatever its identifier says, so it is a class apart from <em>Composite including
+generative AI elements</em> (<code>compositeSynthetic</code>).</p>
 <p><em>Human edits</em> holds only <code>humanEdits</code> and <code>minorHumanEdits</code>.
 The other terms each have a class of their own under IPTC's label, because none of them is
 a human's edit: <em>Composite of elements</em>, whose elements may or may not be generative
@@ -1901,7 +1906,8 @@ process, a batch at a time, so a fault in it costs one file and never the run.</
     again).</li>
   <li><strong>Sidebar filters</strong>: <em>State</em> and <em>Declared source type</em>.</li>
   <li><strong>Gallery mark</strong>: a tile whose file declares a class named AI
-    (<em>Generative AI</em>, <em>Composite with AI</em>) carries <strong>AI declared</strong>,
+    (<em>Generative AI</em>, <em>Edited using Generative AI</em>, <em>Composite including
+    generative AI elements</em>) carries <strong>AI declared</strong>,
     solid when a valid signature backs the declaration and dashed when the manifest is not
     valid or the declaration is only in XMP; a file whose own manifest declares none but
     an ingredient does carries <strong>AI in ingredient</strong>. Hover it for what is

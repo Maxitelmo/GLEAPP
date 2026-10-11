@@ -67,14 +67,16 @@ STATE_SHORT = {
     "trusted": "Valid, listed",
     "not_checked": "Not checked",
 }
-DST_CLASSES = ("generative_ai", "ai_composite", "algorithmic", "algorithmically_altered",
+DST_CLASSES = ("generative_ai", "ai_edited", "ai_composite", "algorithmic",
+               "algorithmically_altered",
                "capture", "composite_capture", "composite", "screen", "virtual_recording",
                "human_edit", "other", "none")
 # What each class of a declared digital source type is called on a screen or in a
 # report. They name the vocabulary group of what the file declares, nothing more.
 DST_CLASS_LABELS = {
     "generative_ai": "Generative AI",
-    "ai_composite": "Composite with AI",
+    "ai_edited": "Edited using Generative AI",
+    "ai_composite": "Composite including generative AI elements",
     "algorithmic": "Algorithmic",
     "algorithmically_altered": "Algorithmically-altered media",
     "capture": "Capture",
@@ -112,6 +114,9 @@ CAVEAT = (
 # recording", a live recording of a virtual event "based on Generative AI and/or
 # captured elements": it can hold no AI at all, so it is a class of its own.
 # compositeSynthetic, "Composite including generative AI elements", has at least one.
+# compositeWithTrainedAlgorithmicMedia is "Edited using Generative AI", an edit such as
+# inpainting or outpainting, which IPTC does not call a composite whatever its URI
+# says; each of the two carries IPTC's own label.
 #
 # "Human edits" holds only humanEdits and minorHumanEdits. Each term that is not a
 # human's edit has a class of its own under IPTC's label: "Composite of elements",
@@ -122,7 +127,8 @@ CAVEAT = (
 # as it was, such as sharpening or noise reduction.
 _DST_GROUPS = {
     "generative_ai": ("trainedAlgorithmicMedia", "trainedAlgorithmicData"),
-    "ai_composite": ("compositeWithTrainedAlgorithmicMedia", "compositeSynthetic"),
+    "ai_edited": ("compositeWithTrainedAlgorithmicMedia",),
+    "ai_composite": ("compositeSynthetic",),
     "algorithmic": ("algorithmicMedia",),
     "algorithmically_altered": ("algorithmicallyEnhanced",),
     "capture": ("digitalCapture", "computationalCapture", "negativeFilm", "positiveFilm",
@@ -136,7 +142,7 @@ _DST_GROUPS = {
 _DST_TERM_CLASS = {term: cls for cls, terms in _DST_GROUPS.items() for term in terms}
 # The classes whose label names AI, and their terms: what the gallery's "AI declared"
 # mark looks for (``ai_declaration``).
-AI_CLASSES = frozenset(("generative_ai", "ai_composite"))
+AI_CLASSES = frozenset(("generative_ai", "ai_edited", "ai_composite"))
 AI_TERMS = tuple(term for cls in sorted(AI_CLASSES) for term in _DST_GROUPS[cls])
 _IPTC_NAMESPACE = "cv.iptc.org/newscodes/digitalsourcetype/"
 _DST_NAMESPACES = (_IPTC_NAMESPACE, "c2pa.org/digitalsourcetype/")
@@ -148,9 +154,11 @@ RETIRED_TERMS = frozenset(("minorHumanEdits", "digitalArt", "softwareImage"))
 # worked out again once per value of this (``CaseDB.refresh_dst_classes``), so **a
 # build that moves a term to another class has to raise it**, or every case an older
 # build read keeps the older class in the column the filter and the list read.
-DST_VOCABULARY = 3       # 2: virtualRecording left "Composite with AI"
+DST_VOCABULARY = 4       # 2: virtualRecording left "Composite with AI"
                          # 3: composite, compositeCapture, algorithmicallyEnhanced
                          #    left "Human edits"
+                         # 4: compositeWithTrainedAlgorithmicMedia left it for
+                         #    "Edited using Generative AI"
 
 # The codes C2PA's Asset Rubrics v1.0 (C2PA Conformance Task Force, 2026-08-06,
 # conformance-public asset-rubrics/asset-rubric-integrity.yml, CC BY 4.0) treat as

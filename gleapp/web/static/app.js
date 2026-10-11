@@ -653,7 +653,8 @@ const C2PA_STATE_SHORT = {
 };
 const C2PA_DST_LABEL = {
   generative_ai: "Generative AI",
-  ai_composite: "Composite with AI",
+  ai_edited: "Edited using Generative AI",
+  ai_composite: "Composite including generative AI elements",
   algorithmic: "Algorithmic",
   algorithmically_altered: "Algorithmically-altered media",
   capture: "Capture",

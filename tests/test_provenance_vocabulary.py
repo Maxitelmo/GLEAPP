@@ -135,6 +135,25 @@ def test_a_term_read_as_a_human_edit_is_no_longer_one(case_root, term, cls):
     assert pv.load(json.dumps(record))["dst_class"] == cls
 
 
+def test_an_edit_with_generative_ai_read_as_a_composite_is_an_edit(case_root):
+    """Vocabularies 1 to 3 put compositeWithTrainedAlgorithmicMedia, IPTC's "Edited
+    using Generative AI", under "Composite with AI"."""
+    root, ids = case_root
+    record = {"state": "valid_untrusted", "codes": {}, "signer": None,
+              "active_dst": DST + "compositeWithTrainedAlgorithmicMedia",
+              "dst_class": "ai_composite", "ingredients": [], "xmp_dst": None}
+    c = open_case(root)
+    try:
+        c.db.update_file(ids["generated.jpg"], **pv.columns(record))
+        c.db.set_meta("c2pa_dst_vocabulary", "3")
+        c.db.commit()
+    finally:
+        c.close()
+    assert _column(root, ids["generated.jpg"])[0] == "ai_edited"
+    assert pv.load(json.dumps(record))["dst_class"] == "ai_edited"
+    assert pv.ai_declaration(pv.load(json.dumps(record)))["badge"] == "AI declared"
+
+
 def test_a_new_case_starts_on_this_vocabulary(tmp_path):
     c = open_case(tmp_path / "case", create=True, examiner="t")
     try:

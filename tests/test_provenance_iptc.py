@@ -24,6 +24,8 @@ CONCEPTS = {c["uri"].rsplit("/", 1)[-1]: c for c in VOCAB["conceptSet"]}
 
 # The classes that hold one IPTC term and carry IPTC's label for it.
 IPTC_LABELLED = {
+    "ai_edited": "compositeWithTrainedAlgorithmicMedia",
+    "ai_composite": "compositeSynthetic",
     "algorithmically_altered": "algorithmicallyEnhanced",
     "composite_capture": "compositeCapture",
     "composite": "composite",
@@ -99,3 +101,12 @@ def test_the_manuals_give_iptc_s_examples_of_an_algorithmic_alteration():
         assert "initiated or configured by a human" in flat
         assert "such as sharpening or noise reduction" in flat
         assert "focus or noise reduction" not in flat
+
+
+def test_an_edit_with_generative_ai_is_not_called_a_composite():
+    """IPTC labels compositeWithTrainedAlgorithmicMedia "Edited using Generative AI"
+    (inpainting, outpainting): its URI names a composite, its definition does not."""
+    assert _label("compositeWithTrainedAlgorithmicMedia") == "Edited using Generative AI"
+    assert "composite" not in _definition("compositeWithTrainedAlgorithmicMedia").lower()
+    assert pv.classify_dst(DST + "compositeWithTrainedAlgorithmicMedia") == "ai_edited"
+    assert "Composite" not in pv.DST_CLASS_LABELS["ai_edited"]
