@@ -1821,8 +1821,8 @@ are kept with each record.</p>
   <tr><td>Composite of elements</td><td><code>composite</code></td></tr>
   <tr><td>Screen capture</td><td><code>screenCapture</code></td></tr>
   <tr><td>Virtual event recording</td><td><code>virtualRecording</code></td></tr>
-  <tr><td>Human edits</td><td><code>humanEdits</code>, <code>minorHumanEdits</code></td></tr>
-  <tr><td>Other</td><td>any other term</td></tr>
+  <tr><td>Human edits</td><td><code>humanEdits</code>, <code>minorHumanEdits</code> (retired by IPTC)</td></tr>
+  <tr><td>Other</td><td>any other term, <code>digitalArt</code> and <code>softwareImage</code> (both retired by IPTC) among them</td></tr>
   <tr><td>None declared</td><td>the manifest declares none</td></tr>
 </table>
 <p>A class whose name says AI holds only terms whose IPTC definition includes generative
@@ -1836,6 +1836,8 @@ AI (so it is neither an AI class nor an edit); <em>Composite of captured element
 every element captured from real life; and <em>Algorithmically-altered media</em>
 (<code>algorithmicallyEnhanced</code>), changed by an algorithm without changing its main
 content, such as focus or noise reduction.</p>
+<p>A term IPTC has retired is still read and keeps its class, since a file can still
+declare it; wherever GLEAPP shows the term, it adds <em>retired by IPTC</em>.</p>
 <p>A term is matched on its whole last segment, so a composite is never read as fully
 generated. The declaration of a manifest that is not valid is still recorded, marked
 <strong>not backed by a valid signature</strong> (C2PA 2.2, §15.3). Ingredients (the

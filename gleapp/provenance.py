@@ -130,7 +130,11 @@ _DST_GROUPS = {
     "human_edit": ("humanEdits", "minorHumanEdits"),
 }
 _DST_TERM_CLASS = {term: cls for cls, terms in _DST_GROUPS.items() for term in terms}
-_DST_NAMESPACES = ("cv.iptc.org/newscodes/digitalsourcetype/", "c2pa.org/digitalsourcetype/")
+_IPTC_NAMESPACE = "cv.iptc.org/newscodes/digitalsourcetype/"
+_DST_NAMESPACES = (_IPTC_NAMESPACE, "c2pa.org/digitalsourcetype/")
+# The terms IPTC has retired (vocabulary read 2026-10-10). A file can still declare
+# one, so each is read and keeps its class; wherever a term is shown, it says so.
+RETIRED_TERMS = frozenset(("minorHumanEdits", "digitalArt", "softwareImage"))
 # What a file declares is the URI, and every record keeps it; the class is worked out
 # from it. ``load`` works each class out again, and a case's c2pa_dst_class column is
 # worked out again once per value of this (``CaseDB.refresh_dst_classes``), so **a
@@ -1216,12 +1220,19 @@ def _term(uri: str) -> str:
     return str(uri).rstrip("/").rsplit("/", 1)[-1]
 
 
+def _term_text(uri: str, cls: str | None) -> str:
+    """'term (class)', the term marked when IPTC has retired it."""
+    term = _term(uri)
+    if term in RETIRED_TERMS and _IPTC_NAMESPACE in str(uri).lower():
+        term += ", retired by IPTC"
+    return f"{term} ({DST_CLASS_LABELS.get(cls, '')})"
+
+
 def _ingredient_lines(ingredients: list, depth: int = 0) -> list[str]:
     lines = []
     for ing in ingredients or []:
         dst = ing.get("dst")
-        what = (f"{_term(dst)} ({DST_CLASS_LABELS.get(ing.get('dst_class'), '')})"
-                if dst else "no source type declared")
+        what = _term_text(dst, ing.get("dst_class")) if dst else "no source type declared"
         state = STATE_SHORT.get(ing.get("state"), ing.get("state") or "")
         lines.append(f"{'  ' * depth}{ing.get('title') or 'untitled'}: {what}; {state}")
         lines += _ingredient_lines(ing.get("ingredients") or [], depth + 1)
@@ -1245,8 +1256,7 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if record.get("claim_generator"):
         rows.append(("Claim generator", str(record["claim_generator"])))
     if record.get("active_dst"):
-        text = (f"{_term(record['active_dst'])} "
-                f"({DST_CLASS_LABELS.get(record.get('dst_class'), '')})")
+        text = _term_text(record["active_dst"], record.get("dst_class"))
         if not record.get("dst_signed_valid"):
             text += ", not backed by a valid signature"
         rows.append(("Declared source type", text))
@@ -1263,8 +1273,8 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
         rows.append(("Ingredients", "\n".join(lines)))
     xmp = record.get("xmp_dst")
     if xmp:
-        rows.append(("XMP source type", f"{_term(xmp.get('uri', ''))} "
-                     f"({DST_CLASS_LABELS.get(xmp.get('class'), '')}), {UNSIGNED}"))
+        rows.append(("XMP source type",
+                     f"{_term_text(xmp.get('uri', ''), xmp.get('class'))}, {UNSIGNED}"))
     if record.get("remote_url"):
         rows.append(("Remote manifest", str(record["remote_url"])))
     if record.get("store_in_bytes"):

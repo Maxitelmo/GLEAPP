@@ -1950,8 +1950,8 @@ The digital source type the active manifest's actions declare (C2PA 2.2,
 | Composite of elements | `composite` |
 | Screen capture | `screenCapture` |
 | Virtual event recording | `virtualRecording` |
-| Human edits | `humanEdits`, `minorHumanEdits` |
-| Other | any other term |
+| Human edits | `humanEdits`, `minorHumanEdits` (retired by IPTC) |
+| Other | any other term, `digitalArt` and `softwareImage` (both retired by IPTC) among them |
 | None declared | the manifest declares none |
 
 A class whose name says AI holds only terms whose IPTC definition includes generative
@@ -1966,6 +1966,9 @@ neither an AI class nor an edit); *Composite of captured elements*, every elemen
 captured from real life; and *Algorithmically-altered media* (`algorithmicallyEnhanced`),
 changed by an algorithm without changing its main content, such as focus or noise
 reduction.
+
+A term IPTC has retired is still read and keeps its class, since a file can still
+declare it; wherever GLEAPP shows the term, it adds *retired by IPTC*.
 
 A term is matched on its whole last segment, so a composite is never read as fully
 generated. The declaration of a manifest that is not valid is still recorded, marked

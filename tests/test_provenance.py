@@ -146,6 +146,39 @@ def test_a_term_that_is_not_a_human_edit_is_named_as_iptc_names_it(term, label):
     assert pv._DST_GROUPS[cls] == (term,)  # pylint: disable=protected-access
 
 
+# The terms IPTC has retired (vocabulary read 2026-10-10). A file can still declare
+# one: it is read, keeps its class, and says it is retired wherever the term is shown.
+RETIRED = ("minorHumanEdits", "digitalArt", "softwareImage")
+
+
+def _declaring(active, ingredient, xmp):
+    child = _manifest(CHILD, ingredient)
+    rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, active,
+                                                   ingredients=[_ingredient(CHILD)]),
+                                         others=[child]))
+    rec["xmp_dst"] = {"uri": xmp, "class": pv.classify_dst(xmp), "label": pv.UNSIGNED}
+    return dict(pv.describe(rec))
+
+
+def test_a_term_iptc_has_retired_is_marked_wherever_it_is_shown():
+    rows = _declaring("minorHumanEdits", "digitalArt", DST + "softwareImage")
+    assert rows["Declared source type"] == "minorHumanEdits, retired by IPTC (Human edits)"
+    assert "ingredient.jpg: digitalArt, retired by IPTC (Other); " in rows["Ingredients"]
+    assert rows["XMP source type"] == ("softwareImage, retired by IPTC (Other), "
+                                       "unsigned declaration")
+    for term in RETIRED:                 # read as before: retiring a term moves nothing
+        assert pv.classify_dst(DST + term) == ("human_edit" if term == "minorHumanEdits"
+                                               else "other")
+
+
+def test_a_current_term_or_another_namespace_is_not_marked_retired():
+    rows = _declaring("humanEdits", "digitalCapture",
+                      "https://example.invalid/digitalsourcetype/minorHumanEdits")
+    assert rows["Declared source type"] == "humanEdits (Human edits)"
+    assert "retired" not in rows["Ingredients"]
+    assert rows["XMP source type"] == "minorHumanEdits (Other), unsigned declaration"
+
+
 def test_the_c2pa_namespace_terms_are_classified():
     assert pv.classify_dst("http://c2pa.org/digitalsourcetype/trainedAlgorithmicData") \
         == "generative_ai"

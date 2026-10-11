@@ -43,6 +43,13 @@ def test_both_manuals_list_every_state_and_every_source_type_term():
                 assert term in doc, term
 
 
+def test_both_manuals_mark_each_term_iptc_has_retired():
+    for doc in (_manual(), html.unescape(_help())):
+        for term in pv.RETIRED_TERMS:
+            assert any(term in ln and "retired by IPTC" in ln
+                       for ln in doc.splitlines()), term
+
+
 def test_the_help_page_links_its_new_section():
     page = _help()
     assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page
