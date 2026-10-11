@@ -47,12 +47,15 @@ from pathlib import Path
 from typing import Any, BinaryIO, Iterable
 
 STATES = ("absent", "malformed", "invalid", "valid_untrusted", "trusted", "not_checked")
+# "Trusted" on its own reads as content worth trusting, so neither valid state is
+# called that: each says whether the signer is on a trust list GLEAPP holds. The
+# stored values (``STATES``) are unchanged.
 STATE_LABELS = {
     "absent": "No Content Credentials",
     "malformed": "Malformed",
     "invalid": "Invalid",
     "valid_untrusted": "Valid, signer not on a trust list",
-    "trusted": "Trusted",
+    "trusted": "Valid, signer on a trust list",
     "not_checked": "Not checked",
 }
 # The same states, short enough for a list column (16 characters at most).
@@ -60,8 +63,8 @@ STATE_SHORT = {
     "absent": "None",
     "malformed": "Malformed",
     "invalid": "Invalid",
-    "valid_untrusted": "Valid, untrusted",
-    "trusted": "Trusted",
+    "valid_untrusted": "Valid, unlisted",
+    "trusted": "Valid, listed",
     "not_checked": "Not checked",
 }
 DST_CLASSES = ("generative_ai", "ai_composite", "algorithmic", "algorithmically_altered",
@@ -1262,7 +1265,7 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
             text += ", not backed by a valid signature"
         rows.append(("Declared source type", text))
     if record.get("trusted_by"):
-        rows.append(("Trusted by", str(record["trusted_by"])))
+        rows.append(("Signer's trust list", str(record["trusted_by"])))
     if record.get("hard_binding_mismatch"):
         rows.append(("Hard binding", "does not match the content the manifest was signed "
                      "for (for example, the content changed after signing, or the manifest "

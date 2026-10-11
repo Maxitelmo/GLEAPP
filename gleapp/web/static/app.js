@@ -640,8 +640,8 @@ const C2PA_STATE_SHORT = {
   absent: "None",
   malformed: "Malformed",
   invalid: "Invalid",
-  valid_untrusted: "Valid, untrusted",
-  trusted: "Trusted",
+  valid_untrusted: "Valid, unlisted",
+  trusted: "Valid, listed",
   not_checked: "Not checked",
 };
 const C2PA_DST_LABEL = {

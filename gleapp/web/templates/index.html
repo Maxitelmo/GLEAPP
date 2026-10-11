@@ -635,11 +635,11 @@
     <details class="fsec" data-sec="c2pa">
       <summary>Content Credentials <span class="fdot"></span></summary>
       <div class="fbody">
-        <label class="flabel" title="What the file's Content Credentials (C2PA) say, read from its metadata. A signature that validates shows the credentials were not changed after signing; trusted means the signer is on a trust list GLEAPP holds.">State
+        <label class="flabel" title="What the file's Content Credentials (C2PA) say, read from its metadata. A signature that validates shows the credentials were not changed after signing; on a trust list means the signer's certificate chains to a trust list GLEAPP holds, which says nothing about the content.">State
           <select id="fc2pa">
             <option value="">Any file</option>
             <option value="any">Has Content Credentials</option>
-            <option value="trusted">Trusted</option>
+            <option value="trusted">Valid, signer on a trust list</option>
             <option value="valid_untrusted">Valid, signer not on a trust list</option>
             <option value="invalid">Invalid</option>
             <option value="malformed">Malformed</option>

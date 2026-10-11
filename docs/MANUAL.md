@@ -551,7 +551,7 @@ was. A reattach is recorded in Processing history.
 
 | Control | What it does |
 |---|---|
-| **State** | Has Content Credentials (malformed, invalid, valid or trusted), one state, or **Not read yet**. See §20. |
+| **State** | Has Content Credentials (malformed, invalid, or valid with the signer on a trust list or not), one state, or **Not read yet**. See §20. |
 | **Declared source type** | The class of the source type the file's manifest declares, valid or not. An XMP declaration outside any manifest is not counted here. |
 | **Read Content Credentials** | Reads the pictures and videos not read yet, and the ones not checked, on a case processed before this existed. |
 
@@ -1926,7 +1926,7 @@ Each picture and video gets one state (C2PA 2.2, §14.3, *Validation states*):
 | **Malformed** | A store that is not well formed: the reader could not parse it, or reported a well-formedness failure (the codes C2PA's Asset Rubrics treat as such). |
 | **Invalid** | Well formed, but validation failed. One such failure is a hard binding that does not match the content the manifest was signed for: for example, the content changed after signing, or the manifest belongs to other content. |
 | **Valid, signer not on a trust list** (`valid_untrusted`) | The signature validates and the content matches it, but the signer's certificate does not chain to any trust list GLEAPP holds. Who signed is not established. |
-| **Trusted** | Valid, and the signer chains to a trust list GLEAPP holds. The record names which list. |
+| **Valid, signer on a trust list** (`trusted`) | Valid, and the signer's certificate chains to a trust list GLEAPP holds. The record names which list. It says who signed, not that the content is true. |
 | **Not checked** | Not validated, and the record says why: the c2pa library is not installed, the manifest lives at a remote address (never fetched, see below), the reader does not support the format, a trust list you set cannot be read, or the reader stopped on the file. |
 
 A file processed by a GLEAPP without this reading has no state yet (**Not read yet**).
@@ -2000,10 +2000,10 @@ Set them for every case in the app's config, or for one run on the command line
 (`--trust-anchors`, `--tsa-anchors`, `--c2pa-trust-list`, `--c2pa-tsa-trust-list`).
 A list that cannot be read stops the reading with that reason; GLEAPP never falls back
 to another list silently. Each record lists the trust lists it was read with, by
-label and SHA-256 (never by the file's path on your machine), and for a trusted
-signer names the one it chained to. A signer that chains only to the **TSA** list is
-recorded as valid but not trusted: that list vouches for time-stamping authorities,
-not signers.
+label and SHA-256 (never by the file's path on your machine), and for a signer on a
+trust list names the one it chained to. A signer that chains only to the **TSA** list
+is recorded as valid with the signer not on a trust list: that list vouches for
+time-stamping authorities, not signers.
 
 ### Offline, and read-only
 

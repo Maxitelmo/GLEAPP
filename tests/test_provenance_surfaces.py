@@ -127,6 +127,23 @@ def test_every_state_and_class_has_a_label_and_the_short_ones_fit_the_column():
     assert max(len(v) for v in pv.STATE_SHORT.values()) <= 16
 
 
+def test_a_valid_state_names_the_signer_and_the_trust_list_and_nothing_more():
+    """'Trusted' on its own reads as content worth trusting. Both valid states say
+    instead whether the signer is on a trust list, in the long and the short forms;
+    the stored values do not change."""
+    assert pv.STATE_LABELS["trusted"] == "Valid, signer on a trust list"
+    assert pv.STATE_LABELS["valid_untrusted"] == "Valid, signer not on a trust list"
+    assert pv.STATE_SHORT["trusted"] == "Valid, listed"
+    assert pv.STATE_SHORT["valid_untrusted"] == "Valid, unlisted"
+    for text in (*pv.STATE_LABELS.values(), *pv.STATE_SHORT.values()):
+        assert "trusted" not in text.lower(), text
+    rec = dict(RECORDS["camera.jpg"], trusted_by="C2PA Trust List (synthetic)")
+    rows = dict(pv.describe(rec))
+    assert rows["Signer's trust list"] == "C2PA Trust List (synthetic)"
+    assert "Trusted by" not in rows
+    assert "trusted" in pv.STATES and "valid_untrusted" in pv.STATES
+
+
 def test_no_label_or_description_states_a_finding():
     words = ("detected", "detection", "score", "probab", "likelihood", "confidence",
              "fake", "verdict")
@@ -180,6 +197,16 @@ def test_the_gallery_names_each_class_the_way_the_module_does():
     body = re.search(r'<select id="fc2padst">(.*?)</select>', page, re.S).group(1)
     options = dict(re.findall(r'<option value="(\w+)">([^<]*)</option>', body))
     assert options == pv.DST_CLASS_LABELS
+
+
+def test_the_gallery_names_each_state_the_way_the_module_does():
+    js = (REPO / "gleapp/web/static/app.js").read_text(encoding="utf-8")
+    body = re.search(r"C2PA_STATE_SHORT = \{(.*?)\};", js, re.S).group(1)
+    assert dict(re.findall(r'(\w+): "([^"]*)"', body)) == pv.STATE_SHORT
+    page = (REPO / "gleapp/web/templates/index.html").read_text(encoding="utf-8")
+    body = re.search(r'<select id="fc2pa">(.*?)</select>', page, re.S).group(1)
+    options = dict(re.findall(r'<option value="(\w+)">([^<]*)</option>', body))
+    assert {k: v for k, v in options.items() if k in pv.STATES} == pv.STATE_LABELS
 
 
 def test_the_sidebar_filters_offer_the_vocabulary():

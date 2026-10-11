@@ -60,6 +60,11 @@ def test_neither_manual_gives_one_cause_for_a_hard_binding_that_does_not_match()
                 "content") in doc
 
 
+def test_neither_manual_labels_a_state_trusted():
+    assert "| **Trusted** |" not in _manual()
+    assert "<strong>Trusted</strong>" not in _help()
+
+
 def test_the_help_page_links_its_new_section():
     page = _help()
     assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page
