@@ -107,7 +107,7 @@ def test_each_iptc_term_falls_in_its_class(term, cls):
 
 
 # The terms whose IPTC definition includes generative AI (Digital Source Type
-# vocabulary, https://cv.iptc.org/newscodes/digitalsourcetype/, read 2026-10-10),
+# vocabulary, https://cv.iptc.org/newscodes/digitalsourcetype/, release of 2024-10-23),
 # and C2PA's trainedAlgorithmicData (C2PA 2.2 §18.14.4.5). Only these may fall in a
 # class whose label names AI: virtualRecording, a live recording of a virtual event
 # "based on Generative AI and/or captured elements" (IPTC), can hold no AI at all.
@@ -146,7 +146,7 @@ def test_a_term_that_is_not_a_human_edit_is_named_as_iptc_names_it(term, label):
     assert pv._DST_GROUPS[cls] == (term,)  # pylint: disable=protected-access
 
 
-# The terms IPTC has retired (vocabulary read 2026-10-10). A file can still declare
+# The terms IPTC has retired (release of 2024-10-23). A file can still declare
 # one: it is read, keeps its class, and says it is retired wherever the term is shown.
 RETIRED = ("minorHumanEdits", "digitalArt", "softwareImage")
 

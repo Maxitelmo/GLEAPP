@@ -107,7 +107,8 @@ CAVEAT = (
 # trainedAlgorithmicMedia, and a term in no known namespace is "other".
 #
 # A class whose label names AI holds only terms whose IPTC definition includes
-# generative AI (vocabulary read 2026-10-10). virtualRecording is "Virtual event
+# generative AI (IPTC's release of 2024-10-23, which tests/test_provenance_iptc.py
+# holds these labels and groups to). virtualRecording is "Virtual event
 # recording", a live recording of a virtual event "based on Generative AI and/or
 # captured elements": it can hold no AI at all, so it is a class of its own.
 # compositeSynthetic, "Composite including generative AI elements", has at least one.
@@ -139,7 +140,7 @@ AI_CLASSES = frozenset(("generative_ai", "ai_composite"))
 AI_TERMS = tuple(term for cls in sorted(AI_CLASSES) for term in _DST_GROUPS[cls])
 _IPTC_NAMESPACE = "cv.iptc.org/newscodes/digitalsourcetype/"
 _DST_NAMESPACES = (_IPTC_NAMESPACE, "c2pa.org/digitalsourcetype/")
-# The terms IPTC has retired (vocabulary read 2026-10-10). A file can still declare
+# The terms IPTC has retired (release of 2024-10-23). A file can still declare
 # one, so each is read and keeps its class; wherever a term is shown, it says so.
 RETIRED_TERMS = frozenset(("minorHumanEdits", "digitalArt", "softwareImage"))
 # What a file declares is the URI, and every record keeps it; the class is worked out

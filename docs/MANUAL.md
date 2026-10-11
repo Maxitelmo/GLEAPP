@@ -2082,8 +2082,8 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
   §15.2.2 (status codes), §15.3 (displaying manifest information), §18.14.4.5
   (digital source type).
 - IPTC Digital Source Type NewsCodes vocabulary,
-  <https://cv.iptc.org/newscodes/digitalsourcetype/> (labels and definitions as read on
-  2026-10-10).
+  <https://cv.iptc.org/newscodes/digitalsourcetype/>, the release of 2024-10-23 (labels
+  and definitions; the suite holds GLEAPP's classes to a copy of it).
 - See also NIST AI 100-4 and SWGDE 18-I-001, which this manual has not been checked
   against section by section.
 
