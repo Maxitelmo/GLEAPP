@@ -2055,8 +2055,16 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
 
 - **Sidebar filters** (Content Credentials section): **State** (has Content
   Credentials, each state, not read yet) and **Declared source type**.
+- **Gallery mark**: a tile whose file declares a class named AI (*Generative AI*,
+  *Composite with AI*) carries **AI declared**, solid when a valid signature backs the
+  declaration and dashed when the manifest is not valid or the declaration is only in
+  XMP; a file whose own manifest declares none but an ingredient does carries **AI in
+  ingredient**. Hover it for what is declared, by what and in which state. It is a
+  declaration, not a finding, and it changes no category. A file with no mark may still
+  have been made with AI: see *What a state does not mean* above.
 - **List view** columns: *Content Credentials*, *Declared source type*, *C2PA signer*
-  (off by default; add them from the column menu).
+  and *AI declaration*, the mark in words (off by default; add them from the column
+  menu).
 - **Details pane**: a *Content Credentials* section with every field of the record and
   the paragraph above.
 - **Search** covers the signer and the record (claim generator, declared actions,

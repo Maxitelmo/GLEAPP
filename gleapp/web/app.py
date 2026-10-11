@@ -275,6 +275,25 @@ def _unlock_sources(sources, data: dict) -> list[dict]:
     return locked
 
 
+def ai_marks(case, files: list[dict]) -> None:
+    """Set ``c2pa_ai`` on each file of a page: what it declares about generative AI
+    (``provenance.ai_declaration``), or None. A page carries no c2pa_info, so the
+    records are read here, and only the ones whose text names an AI term
+    (``provenance.AI_TERMS``); a record that names none cannot declare one."""
+    found: dict[int, dict | None] = {}
+    ids = [f["id"] for f in files if f.get("id") is not None]
+    like = " OR ".join("c2pa_info LIKE ?" for _ in provenance.AI_TERMS)
+    terms = tuple(f"%{t}%" for t in provenance.AI_TERMS)
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        for r in case.db.conn.execute(
+                f"SELECT id, c2pa_info FROM files WHERE id IN ({','.join('?' * len(chunk))}) "
+                f"AND ({like})", (*chunk, *terms)):
+            found[r["id"]] = provenance.ai_declaration(provenance.load(r["c2pa_info"]))
+    for f in files:
+        f["c2pa_ai"] = found.get(f.get("id"))
+
+
 def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
     state: dict = {
@@ -1571,6 +1590,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             d["stack_count"] = stack_n.get(r["stack_id"], 1)
             d["vstack_count"] = vstack_n.get(r["vstack_id"], 0)
             out.append(d)
+        ai_marks(case, out)
         # server time for this request, shown by the gallery's timing readout
         return jsonify({"total": total, "offset": offset, "files": out,
                         "server_ms": round((time.perf_counter() - started) * 1000)})
@@ -1656,6 +1676,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             code = h.get("category")
             h["category_label"] = categories.label(case.db, code)
             h["category_color"] = categories.color(case.db, code)
+        ai_marks(case, hits)
         return jsonify({"file_id": file_id, "count": len(hits), "files": hits, "engine": engine,
                         "more": bool(quick and engine == "index"),
                         "unindexed": max(0, st["indexable"] - st["indexed"]),
@@ -1707,6 +1728,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             code = h.get("category")
             h["category_label"] = categories.label(case.db, code)
             h["category_color"] = categories.color(case.db, code)
+        ai_marks(case, hits)
         return jsonify({"face_id": face_id, "count": len(hits), "files": hits})
 
     # ---- categories -----------------------------------------

@@ -133,6 +133,10 @@ _DST_GROUPS = {
     "human_edit": ("humanEdits", "minorHumanEdits"),
 }
 _DST_TERM_CLASS = {term: cls for cls, terms in _DST_GROUPS.items() for term in terms}
+# The classes whose label names AI, and their terms: what the gallery's "AI declared"
+# mark looks for (``ai_declaration``).
+AI_CLASSES = frozenset(("generative_ai", "ai_composite"))
+AI_TERMS = tuple(term for cls in sorted(AI_CLASSES) for term in _DST_GROUPS[cls])
 _IPTC_NAMESPACE = "cv.iptc.org/newscodes/digitalsourcetype/"
 _DST_NAMESPACES = (_IPTC_NAMESPACE, "c2pa.org/digitalsourcetype/")
 # The terms IPTC has retired (vocabulary read 2026-10-10). A file can still declare
@@ -1363,6 +1367,61 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if record.get("library_version"):
         rows.append(("Read with", str(record["library_version"])))
     return rows
+
+
+DECLARATION_NOTE = "A declaration, not a finding."
+_VALID = ("valid_untrusted", "trusted")
+
+
+def _ai_ingredient(ingredients: Any) -> dict | None:
+    for ing in ingredients if isinstance(ingredients, list) else []:
+        if not isinstance(ing, dict):
+            continue
+        if ing.get("dst") and ing.get("dst_class") in AI_CLASSES:
+            return ing
+        found = _ai_ingredient(ing.get("ingredients"))
+        if found:
+            return found
+    return None
+
+
+def ai_declaration(record: dict | None) -> dict | None:
+    """What a file declares about generative AI, for the gallery's mark, or None when
+    nothing does: the file's own manifest first, then its XMP, then the first
+    ingredient that declares it. ``backed`` says whether a valid signature stands
+    behind the declaration, ``text`` says so in a list cell and ``title`` in full.
+    A file that declares nothing gets no mark: absence says nothing either way."""
+    if not record:
+        return None
+    if record.get("active_dst") and record.get("dst_class") in AI_CLASSES:
+        state = STATE_LABELS.get(record.get("state"), record.get("state") or "")
+        what = _term_text(record["active_dst"], record["dst_class"])
+        backed = record.get("state") in _VALID
+        return {"badge": "AI declared", "backed": backed,
+                "text": "AI declared" if backed else
+                        "AI declared, not backed by a valid signature",
+                "title": f"Declared by the file's Content Credentials: {what}"
+                         + (f"; {state}. " if backed else
+                            f", not backed by a valid signature ({state}). ")
+                         + DECLARATION_NOTE}
+    xmp = record.get("xmp_dst")
+    if isinstance(xmp, dict) and xmp.get("uri") and xmp.get("class") in AI_CLASSES:
+        return {"badge": "AI declared", "backed": False, "text": "AI declared, unsigned (XMP)",
+                "title": f"Declared in the file's XMP: {_term_text(xmp['uri'], xmp['class'])}, "
+                         f"{UNSIGNED}. {DECLARATION_NOTE}"}
+    ing = _ai_ingredient(record.get("ingredients"))
+    if ing:
+        state = STATE_LABELS.get(ing.get("state"), ing.get("state") or "")
+        backed = ing.get("state") in _VALID
+        return {"badge": "AI in ingredient", "backed": backed,
+                "text": "AI in ingredient" if backed else
+                        "AI in ingredient, not backed by a valid signature",
+                "title": f'Declared by the ingredient "{ing.get("title") or "untitled"}": '
+                         f"{_term_text(ing['dst'], ing['dst_class'])}"
+                         + (f"; {state}. " if backed else
+                            f", not backed by a valid signature ({state}). ")
+                         + DECLARATION_NOTE}
+    return None
 
 
 def describe_text(record: dict | None) -> str:

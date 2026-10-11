@@ -1900,8 +1900,17 @@ process, a batch at a time, so a fault in it costs one file and never the run.</
     <code>gleapp -c CASE provenance</code> (<code>--force</code> reads everything
     again).</li>
   <li><strong>Sidebar filters</strong>: <em>State</em> and <em>Declared source type</em>.</li>
+  <li><strong>Gallery mark</strong>: a tile whose file declares a class named AI
+    (<em>Generative AI</em>, <em>Composite with AI</em>) carries <strong>AI declared</strong>,
+    solid when a valid signature backs the declaration and dashed when the manifest is not
+    valid or the declaration is only in XMP; a file whose own manifest declares none but
+    an ingredient does carries <strong>AI in ingredient</strong>. Hover it for what is
+    declared, by what and in which state. It is a declaration, not a finding, and it
+    changes no category. A file with no mark may still have been made with AI: see
+    <em>What a state does not mean</em> above.</li>
   <li><strong>List view</strong> columns <em>Content Credentials</em>, <em>Declared source
-    type</em> and <em>C2PA signer</em> (off by default).</li>
+    type</em>, <em>C2PA signer</em> and <em>AI declaration</em>, the mark in words (off by
+    default).</li>
   <li><strong>Details pane</strong>: a <em>Content Credentials</em> section with the
     whole record and the paragraph above.</li>
   <li><strong>Search</strong> covers the signer and the record.</li>

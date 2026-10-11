@@ -490,6 +490,12 @@ function tileEl(f) {
   const hit = hashBadges(f);
   const gps = f.gps_lat != null ? `<span class="b">\u{1F4CD}</span>` : "";
   const err = f.error && !f.thumb ? `<span class="b err">ERR</span>` : "";
+  // what the file declares about generative AI (provenance.ai_declaration): solid
+  // when a valid signature backs it, dashed when nothing does. A declaration, never
+  // a finding, and no mark at all when nothing declares it.
+  const ai = f.c2pa_ai
+    ? `<span class="b ai${f.c2pa_ai.backed ? "" : " unbacked"}" title="${esc(f.c2pa_ai.title)}">${esc(f.c2pa_ai.badge)}</span>`
+    : "";
   const flagB = f.flags && f.flags.length
     ? `<span class="b" title="${esc(f.flags.map(x => x.name).join(", "))}">⚑ ${f.flags.length}</span>`
     : "";
@@ -520,7 +526,7 @@ function tileEl(f) {
       ${media}
       ${f.kind === "video" ? `<div class="scrub"><i></i></div>
         <span class="vid">▶ ${fmtDur(f.duration)}</span>` : ""}
-      <div class="badges">${hit}${err}${dist}${faces}${gps}${flagB}</div>
+      <div class="badges">${hit}${ai}${err}${dist}${faces}${gps}${flagB}</div>
       ${stack}
       <span class="selcheck">✓</span>
     </div>
@@ -611,6 +617,7 @@ const shortHash = h => !h ? "" : h.length > 12 ? h.slice(0, 12) + "…" : h;
 // label:    header text
 // type:     text | num | enum | date  (drives the filter widget)
 // get(f):   display string
+// title(f): the cell's tooltip, when it is not the display string
 // mono:     render in monospace
 // options:  for enum filters — array or () => array of {value,label}
 // The three ways a file reaches a case. The keys are the stored files.origin
@@ -689,6 +696,10 @@ const LIST_DEFS = [
     get: f => C2PA_DST_LABEL[f.c2pa_dst_class] || "",
     options: () => Object.entries(C2PA_DST_LABEL).map(([value, label]) => ({ value, label })) },
   { key: "c2pa_signer", label: "C2PA signer", type: "text", get: f => f.c2pa_signer || "" },
+  // the gallery's "AI declared" mark, in words; worked out per page, so neither
+  // sorted nor filtered on
+  { key: "", alt: "c2pa_ai", label: "AI declaration", type: "",
+    get: f => f.c2pa_ai ? f.c2pa_ai.text : "", title: f => f.c2pa_ai ? f.c2pa_ai.title : "" },
   { key: "kind", label: "Type", type: "enum", get: f => f.kind || "",
     options: [{ value: "image", label: "image" }, { value: "video", label: "video" },
               { value: "other", label: "other" }] },
@@ -1054,7 +1065,8 @@ function lvRowEl(f, defs) {
       cls += " catcell";
       style = ` style="border-left-color:${catColor(f.category)}"`;
     }
-    return `<td class="${cls.trim()}"${style} title="${esc(v)}">${d.mark ? pathHtml(f, v) : esc(v)}</td>`;
+    const tip = d.title ? d.title(f) : v;
+    return `<td class="${cls.trim()}"${style} title="${esc(tip)}">${d.mark ? pathHtml(f, v) : esc(v)}</td>`;
   }).join("");
   return tr;
 }
