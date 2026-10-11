@@ -82,6 +82,35 @@ def test_a_changed_byte_breaks_the_hard_binding(tmp_path, chain):
     assert rec["dst_signed_valid"] is False
 
 
+def _app11(jpeg: bytes) -> tuple[int, bytes]:
+    """(offset of the first APP11 segment, every APP11 segment) of a JPEG."""
+    pos, first, found = 2, None, b""
+    while jpeg[pos] == 0xFF and jpeg[pos + 1] not in (0xDA, 0xD9):
+        end = pos + 2 + int.from_bytes(jpeg[pos + 2:pos + 4], "big")
+        if jpeg[pos + 1] == 0xEB:
+            first = pos if first is None else first
+            found += jpeg[pos:end]
+        pos = end
+    return first, found
+
+
+def test_a_manifest_carried_over_from_other_content_fails_the_same_way(tmp_path, chain):
+    """The manifest store of one signed picture placed, at the same offset, in a
+    picture with other pixels: the hard binding fails exactly as it does for content
+    changed after signing, so a mismatch alone cannot say which happened."""
+    signed = sign(chain, _picture(), "image/jpeg", created("digitalCapture"))
+    offset, store = _app11(signed)
+    buf = io.BytesIO()
+    Image.new("RGB", (48, 32), (200, 40, 40)).save(buf, "JPEG")
+    other = buf.getvalue()
+    rec = _read(_write(tmp_path, "carried.jpg", other[:offset] + store + other[offset:]))
+    assert rec["state"] == "invalid"
+    assert rec["hard_binding_mismatch"] is True
+    assert "assertion.dataHash.mismatch" in [c["code"] for c in rec["codes"]["failure"]]
+    assert dict(pv.describe(rec))["Hard binding"].startswith(
+        "does not match the content the manifest was signed for")
+
+
 def test_a_capture(tmp_path, chain):
     rec = _read(_write(tmp_path, "capture.jpg",
                        sign(chain, _picture(), "image/jpeg", created("digitalCapture"))))

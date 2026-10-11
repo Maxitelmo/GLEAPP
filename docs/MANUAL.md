@@ -1924,7 +1924,7 @@ Each picture and video gets one state (C2PA 2.2, §14.3, *Validation states*):
 |---|---|
 | **No Content Credentials** (`absent`) | No manifest store. Either GLEAPP read every metadata block of a JPEG, PNG, WebP, TIFF or ISOBMFF (HEIC, AVIF, MP4, MOV) file and found neither a store nor a reference to one, or the c2pa reader found none. The details say which. |
 | **Malformed** | A store that is not well formed: the reader could not parse it, or reported a well-formedness failure (the codes C2PA's Asset Rubrics treat as such). |
-| **Invalid** | Well formed, but validation failed, for example a hard binding that no longer matches the bytes (the file changed after signing). |
+| **Invalid** | Well formed, but validation failed. One such failure is a hard binding that does not match the content the manifest was signed for: for example, the content changed after signing, or the manifest belongs to other content. |
 | **Valid, signer not on a trust list** (`valid_untrusted`) | The signature validates and the content matches it, but the signer's certificate does not chain to any trust list GLEAPP holds. Who signed is not established. |
 | **Trusted** | Valid, and the signer chains to a trust list GLEAPP holds. The record names which list. |
 | **Not checked** | Not validated, and the record says why: the c2pa library is not installed, the manifest lives at a remote address (never fetched, see below), the reader does not support the format, a trust list you set cannot be read, or the reader stopped on the file. |

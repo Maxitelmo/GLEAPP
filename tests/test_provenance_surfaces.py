@@ -141,10 +141,19 @@ def test_a_declaration_from_a_manifest_that_is_not_valid_is_described_as_such():
     rows = dict(pv.describe(RECORDS["changed.jpg"]))
     assert rows["State"].startswith("Invalid")
     assert "not backed by a valid signature" in rows["Declared source type"]
-    assert "changed after signing" in rows["Hard binding"]
+    assert rows["Hard binding"].startswith("does not match")
     rows = dict(pv.describe(RECORDS["declared.jpg"]))
     assert rows["XMP source type"].endswith("unsigned declaration")
     assert "Declared source type" not in rows
+
+
+def test_a_hard_binding_that_does_not_match_names_no_single_cause():
+    """A manifest carried over from other content fails its hard binding the same way
+    content changed after signing does, so the row gives both, as examples."""
+    rows = dict(pv.describe(RECORDS["changed.jpg"]))
+    assert rows["Hard binding"] == (
+        "does not match the content the manifest was signed for (for example, the "
+        "content changed after signing, or the manifest belongs to other content)")
 
 
 # -- the gallery ----------------------------------------------------------------------

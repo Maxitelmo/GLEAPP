@@ -165,8 +165,9 @@ WELL_FORMED_CODES = frozenset((
     "manifest.timestamp.wrongParents", "manifest.update.invalid",
     "manifest.update.wrongParents",
 ))
-# The hard bindings tie a manifest to the asset's bytes; a mismatch means the bytes
-# changed after signing.
+# The hard bindings tie a manifest to the content it was signed for. A mismatch says
+# the content is not that content, not why: content changed after signing fails the
+# same way as a manifest carried over from other content.
 HARD_BINDING_MISMATCH = frozenset((
     "assertion.dataHash.mismatch", "assertion.bmffHash.mismatch",
     "assertion.boxesHash.mismatch", "assertion.collectionHash.mismatch",
@@ -1263,7 +1264,9 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if record.get("trusted_by"):
         rows.append(("Trusted by", str(record["trusted_by"])))
     if record.get("hard_binding_mismatch"):
-        rows.append(("Hard binding", "does not match: the bytes changed after signing"))
+        rows.append(("Hard binding", "does not match the content the manifest was signed "
+                     "for (for example, the content changed after signing, or the manifest "
+                     "belongs to other content)"))
     failures = [c.get("code") for c in (record.get("codes") or {}).get("failure", [])
                 if isinstance(c, dict)]
     if failures:

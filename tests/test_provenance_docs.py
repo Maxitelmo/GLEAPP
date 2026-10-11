@@ -50,6 +50,16 @@ def test_both_manuals_mark_each_term_iptc_has_retired():
                        for ln in doc.splitlines()), term
 
 
+def test_neither_manual_gives_one_cause_for_a_hard_binding_that_does_not_match():
+    plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
+    for doc in (_flat(_manual()), plain):
+        assert "the file changed after signing" not in doc
+        assert "no longer matches the bytes" not in doc
+        assert ("does not match the content the manifest was signed for: for example, "
+                "the content changed after signing, or the manifest belongs to other "
+                "content") in doc
+
+
 def test_the_help_page_links_its_new_section():
     page = _help()
     assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page
