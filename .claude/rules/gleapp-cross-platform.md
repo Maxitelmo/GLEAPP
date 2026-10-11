@@ -1136,8 +1136,16 @@ reconstruction, not a record, and its 290-odd crates include CDLA-Permissive-2.0
 certifi (MPL-2.0) and cryptography with a static OpenSSL 4.0.3, and about 293 MB of
 `.pdb`/`.lib`/`.exp` build files on Windows. So the spec excludes `c2pa` (PyInstaller
 follows the import inside a function), and the frozen app records "C2PA not checked:
-library unavailable". `tests/test_c2pa_packaging.py` pins the extra, its absence from the
-requirements, the exclude and the CI split.
+library unavailable". The exclude keeps the code out and not the metadata: PyInstaller
+copies a distribution's dist-info wherever the code names it to `importlib.metadata`, and
+`provenance.library_version()` asks for `c2pa-python`. Measured 2026-10-11 on Linux with
+PyInstaller 6.22.2 and the extra installed: the bundle carried
+`c2pa_python-0.38.0.dist-info`, a RECORD of files it did not hold, and none of the package.
+The spec drops it after the analysis. The app behaved the same either way, since
+`library_available()` asks `find_spec`, and CI and release builds install `.[build]`
+alone, so only a build made beside the extra had it. `tests/test_c2pa_packaging.py` pins
+the extra, its absence from the requirements, the exclude, the dropped metadata and the CI
+split.
 
 **CI runs both paths.** The Linux `pytest` job and `windows-smoke` install `.[dev,provenance]`
 so the tests that sign synthetic fixtures with the real library run; the runtime-contract

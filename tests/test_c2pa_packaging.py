@@ -41,6 +41,26 @@ def test_the_frozen_build_excludes_it():
     assert '"c2pa"' in excludes
 
 
+def test_the_frozen_build_drops_its_metadata_too():
+    """The exclude keeps the code out, not the dist-info: PyInstaller copies it
+    because provenance.library_version() asks importlib.metadata for "c2pa-python"
+    by name, and a build beside the extra carried c2pa_python-0.38.0.dist-info."""
+    spec = _text("packaging", "gleapp.spec")
+    found = re.search(r'^_C2PA_METADATA = re\.compile\(r"(.+?)", re\.I\)$', spec, re.M)
+    assert found, "the spec does not drop c2pa-python's metadata"
+    metadata = re.compile(found.group(1), re.I)
+    for dest in ("c2pa_python-0.38.0.dist-info", "c2pa_python-0.38.0.dist-info/RECORD",
+                 "c2pa_python-0.38.0.dist-info\\METADATA", "C2PA_Python-1.0.dist-info/WHEEL"):
+        assert metadata.match(dest), dest
+    for dest in ("gleapp/trust/LICENSE-c2pa-trust-lists", "gleapp/trust/C2PA-TRUST-LIST.pem",
+                 "c2pa_pythonic-1.0.dist-info/METADATA", "x/c2pa_python-0.38.0.dist-info/RECORD"):
+        assert not metadata.match(dest), dest
+    assert re.search(r"^a\.datas = \[d for d in a\.datas if not _C2PA_METADATA\.match\(",
+                     spec, re.M)
+    # what puts it there: if this call goes, so can the filter
+    assert 'metadata.version("c2pa-python")' in _text("gleapp", "provenance.py")
+
+
 def test_ci_runs_the_suite_with_the_library_and_without_it():
     """The Linux and Windows jobs install the extra, so the signed-fixture tests run;
     the runtime-contract matrix (3.10 to 3.14) does not, so the 'library unavailable'
