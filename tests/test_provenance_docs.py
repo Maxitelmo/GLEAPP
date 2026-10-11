@@ -65,6 +65,14 @@ def test_neither_manual_labels_a_state_trusted():
     assert "<strong>Trusted</strong>" not in _help()
 
 
+def test_both_manuals_describe_the_declared_actions():
+    plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
+    for doc in (_flat(_manual()), plain):
+        assert "Declared actions" in doc
+        assert "transcribed as written" in doc
+        assert "gleapp provenance --force" in doc
+
+
 def test_the_help_page_links_its_new_section():
     page = _help()
     assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page

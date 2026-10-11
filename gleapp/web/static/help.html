@@ -1850,6 +1850,18 @@ from it by the GLEAPP reading the case. A case read before a term was moved to a
 class shows, filters and exports the class this version gives it; the record itself is
 never rewritten.</p>
 
+<h3>Declared actions</h3>
+<p><strong>Declared actions</strong> lists every action the active manifest declares
+(C2PA 2.2, §18.14), in order, each with the software agent it names: a name and version,
+or the text an older manifest carries. They are transcribed as written and never
+classified, so an action GLEAPP has no word for, such as a vendor's own
+<code>com.example.provided</code>, is shown as it stands. The actions of a manifest that
+is not valid are marked <strong>not backed by a valid signature</strong>. A manifest that
+declares none says <strong>none declared</strong>; a file read by a GLEAPP that did not
+keep actions says so instead, and <code>gleapp provenance --force</code> reads it again.
+They show in the details pane, the HTML report's Content Credentials field and LAVA's
+Content Credentials Detail.</p>
+
 <h3>Trust lists</h3>
 <p>GLEAPP carries the <strong>C2PA Trust List</strong> and the <strong>C2PA TSA Trust
 List</strong> as published in <code>c2pa-org/conformance-public</code>, unmodified.

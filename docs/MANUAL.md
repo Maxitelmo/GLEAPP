@@ -1984,6 +1984,18 @@ never rewritten.
 A source type found only in **XMP**, outside any manifest, is recorded separately as
 an **unsigned declaration** and never folded into the state or the declared class.
 
+### Declared actions
+
+**Declared actions** lists every action the active manifest declares (C2PA 2.2, §18.14),
+in order, each with the software agent it names: a name and version, or the text an
+older manifest carries. They are transcribed as written and never classified, so an
+action GLEAPP has no word for, such as a vendor's own `com.example.provided`, is shown
+as it stands. The actions of a manifest that is not valid are marked **not backed by a
+valid signature**. A manifest that declares none says **none declared**; a file read by
+a GLEAPP that did not keep actions says so instead, and `gleapp provenance --force`
+reads it again. They show in the details pane, the HTML report's Content Credentials
+field and LAVA's Content Credentials Detail.
+
 ### Trust lists
 
 GLEAPP carries the **C2PA Trust List** and the **C2PA TSA Trust List** as published
@@ -2040,7 +2052,8 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
   (off by default; add them from the column menu).
 - **Details pane**: a *Content Credentials* section with every field of the record and
   the paragraph above.
-- **Search** covers the signer and the record (claim generator, ingredients, codes).
+- **Search** covers the signer and the record (claim generator, declared actions,
+  ingredients, codes).
 - **Exports**: CSV columns `c2pa_state`, `c2pa_dst_class`, `c2pa_signer`,
   `c2pa_xmp_dst` and `c2pa_info` (the whole record as JSON); the JSON export carries
   the record as an object and the paragraph above as `c2pa_caveat`; the HTML report

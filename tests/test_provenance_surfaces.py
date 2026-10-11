@@ -238,6 +238,7 @@ def test_the_details_pane_describes_the_record_with_the_caveat(case, client):
     rows = dict(f["c2pa_rows"])
     assert rows["State"].startswith("Invalid")
     assert rows["Signer"] == "Synthetic Signer (Synthetic Test Org)"
+    assert rows["Declared actions"] == "not backed by a valid signature:\nc2pa.created"
     assert f["c2pa_caveat"] == pv.CAVEAT
     plain = client.get(f"/api/file/{ids['plain.jpg']}").get_json()
     assert dict(plain["c2pa_rows"])["State"].startswith("No Content Credentials")

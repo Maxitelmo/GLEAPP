@@ -180,6 +180,7 @@ HARD_BINDING_MISMATCH = frozenset((
 _TOLERATED_PREFIXES = ("cawg.x509.", "cawg.identity.")
 _TOLERATED = frozenset(("signingCredential.untrusted",))
 MAX_DEPTH = 8          # how deep ingredient manifests are followed
+MAX_ACTIONS = 64       # most declared actions kept per manifest; the rest are counted
 _MAX_TEXT = 300        # longest explanation or message kept per code
 
 _MAX_BLOCK = 32 * 1024 * 1024
@@ -312,6 +313,53 @@ def _dst(manifest: dict) -> tuple[str | None, str | None]:
     return found[0] if found else (None, None)
 
 
+def _agent(agent: Any) -> str | None:
+    """A softwareAgent as declared: its name and version, or the string an actions
+    v1 assertion carries."""
+    if isinstance(agent, dict):
+        return " ".join(str(agent[k]) for k in ("name", "version") if agent.get(k)) or None
+    return str(agent) if agent not in (None, "") else None
+
+
+def _actions(manifest: dict) -> tuple[list[dict], int]:
+    """(each action the manifest's actions assertions declare, in order, with the
+    softwareAgent it names; how many past ``MAX_ACTIONS`` were left out). Written
+    down as declared, never classified. c2pa-rs 0.91.0 returns a softwareAgent as a
+    name and version, as a string, or as softwareAgentIndex into the assertion's
+    softwareAgents (C2PA 2.2 §18.14)."""
+    out: list[dict] = []
+    total = 0
+    for assertion in manifest.get("assertions") or []:
+        if not isinstance(assertion, dict) or \
+                not str(assertion.get("label") or "").startswith("c2pa.actions"):
+            continue
+        data = assertion.get("data")
+        if not isinstance(data, dict):
+            continue
+        agents = data.get("softwareAgents")
+        agents = agents if isinstance(agents, list) else []
+        for act in data.get("actions") or []:
+            if not isinstance(act, dict):
+                continue
+            total += 1
+            if len(out) >= MAX_ACTIONS:
+                continue
+            entry = {"action": str(act.get("action") or "")[:_MAX_TEXT]}
+            agent = _agent(act.get("softwareAgent"))
+            index = act.get("softwareAgentIndex")
+            if agent is None and index is not None:
+                listed = isinstance(index, int) and not isinstance(index, bool)
+                if listed and 0 <= index < len(agents):
+                    agent = _agent(agents[index])
+                else:
+                    agent = (f"softwareAgentIndex {index}, not in the assertion's "
+                             "softwareAgents")
+            if agent:
+                entry["software_agent"] = agent[:_MAX_TEXT]
+            out.append(entry)
+    return out, total - len(out)
+
+
 def _delta_failures(results: dict, manifest_label: str | None, ingredient: dict) -> list[str]:
     """Current failures for one ingredient, from the parent's ingredientDeltas."""
     out = []
@@ -401,6 +449,9 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
         "trust_list_uri": trust_list_uri,
         "timestamp_trust_list_uri": results.get("timestampTrustListUri"),
     }
+    record["actions"], omitted = _actions(manifest)
+    if omitted:
+        record["actions_omitted"] = omitted
     if reason:
         record["state_reason"] = reason
     return record
@@ -1243,6 +1294,27 @@ def _ingredient_lines(ingredients: list, depth: int = 0) -> list[str]:
     return lines
 
 
+def _actions_text(record: dict) -> str | None:
+    """The declared actions, one a line, as the manifest names them; None when the
+    record has no manifest to declare any."""
+    if "actions" not in record:
+        # read by a GLEAPP that did not keep them: not the same as none declared
+        return ("not recorded by the GLEAPP that read this file "
+                "(gleapp provenance --force reads it again)"
+                if record.get("active_manifest") else None)
+    lines = [(a.get("action") or "(no action named)")
+             + (f" (software agent: {a['software_agent']})" if a.get("software_agent") else "")
+             for a in record["actions"] or [] if isinstance(a, dict)]
+    if record.get("actions_omitted"):
+        lines.append(f"and {record['actions_omitted']} more")
+    if not lines:
+        return "none declared"
+    if record.get("state") not in ("valid_untrusted", "trusted"):
+        # C2PA 2.2 §15.3, as for the declared source type
+        lines.insert(0, "not backed by a valid signature:")
+    return "\n".join(lines)
+
+
 def describe(record: dict | None) -> list[tuple[str, str]]:
     """(label, value) rows for a record, in the words every surface uses: what the
     file declares, who signed it, whether the signature validates and whether the
@@ -1264,6 +1336,9 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
         if not record.get("dst_signed_valid"):
             text += ", not backed by a valid signature"
         rows.append(("Declared source type", text))
+    actions = _actions_text(record)
+    if actions:
+        rows.append(("Declared actions", actions))
     if record.get("trusted_by"):
         rows.append(("Signer's trust list", str(record["trusted_by"])))
     if record.get("hard_binding_mismatch"):

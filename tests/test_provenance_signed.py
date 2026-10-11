@@ -111,6 +111,20 @@ def test_a_manifest_carried_over_from_other_content_fails_the_same_way(tmp_path,
         "does not match the content the manifest was signed for")
 
 
+def test_the_declared_actions_are_transcribed_from_a_signed_file(tmp_path, chain):
+    """Every action and its softwareAgent, as the reader returns them: a name and
+    version, and an index into the assertion's softwareAgents."""
+    actions = [{"action": "c2pa.created", "digitalSourceType": DST + "digitalCapture",
+                "softwareAgent": {"name": "Synthetic Agent", "version": "2.1"}},
+               {"action": "org.example.provided"}]
+    rec = _read(_write(tmp_path, "acted.jpg", sign(chain, _picture(), "image/jpeg", actions)))
+    assert rec["state"] == "valid_untrusted"
+    assert rec["actions"] == [{"action": "c2pa.created", "software_agent": "Synthetic Agent 2.1"},
+                              {"action": "org.example.provided"}]
+    assert dict(pv.describe(rec))["Declared actions"] == (
+        "c2pa.created (software agent: Synthetic Agent 2.1)\norg.example.provided")
+
+
 def test_a_capture(tmp_path, chain):
     rec = _read(_write(tmp_path, "capture.jpg",
                        sign(chain, _picture(), "image/jpeg", created("digitalCapture"))))

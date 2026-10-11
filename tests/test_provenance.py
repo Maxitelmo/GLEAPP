@@ -393,6 +393,92 @@ def test_the_record_is_json_and_carries_no_score():
     assert rec["state"] in pv.STATES
 
 
+# -- the declared actions -------------------------------------------------------------
+
+def _acting(actions, *, agents=None, more=(), state="Valid", failure=("signingCredential.untrusted",)):
+    """A manifest declaring ``actions`` in a c2pa.actions.v2 assertion (with
+    ``agents`` as its softwareAgents list), and ``more`` in a c2pa.actions one."""
+    m = _manifest(ACTIVE, "digitalCapture")
+    data = {"actions": list(actions)}
+    if agents is not None:
+        data["softwareAgents"] = list(agents)
+    m["assertions"] = [{"label": "c2pa.actions.v2", "data": data}]
+    if more:
+        m["assertions"].append({"label": "c2pa.actions", "data": {"actions": list(more)}})
+    return pv.parse_manifest_store(_store(m, state, _results(failure=failure)))
+
+
+AGENTS = [{"name": "Synthetic Agent A"}, {"name": "Synthetic Indexed Agent", "version": "3.0"}]
+ACTIONS = [
+    {"action": "c2pa.created", "digitalSourceType": DST + "digitalCapture",
+     "softwareAgent": {"name": "Synthetic Agent", "version": "2.1"}},
+    {"action": "org.example.provided", "softwareAgent": "Synthetic Tool 0.9"},
+    {"action": "c2pa.edited", "softwareAgentIndex": 1},
+]
+
+
+def test_every_declared_action_is_transcribed_with_its_software_agent():
+    """A softwareAgent is a name and version, a string (actions v1) or an index into
+    the assertion's softwareAgents (actions v2): the three forms c2pa-rs 0.91.0
+    returns. Each is written as declared; nothing is classified."""
+    rec = _acting(ACTIONS, agents=AGENTS, more=[{"action": "c2pa.opened"}])
+    assert rec["actions"] == [
+        {"action": "c2pa.created", "software_agent": "Synthetic Agent 2.1"},
+        {"action": "org.example.provided", "software_agent": "Synthetic Tool 0.9"},
+        {"action": "c2pa.edited", "software_agent": "Synthetic Indexed Agent 3.0"},
+        {"action": "c2pa.opened"},
+    ]
+    assert "actions_omitted" not in rec
+    rows = dict(pv.describe(rec))
+    assert rows["Declared actions"] == (
+        "c2pa.created (software agent: Synthetic Agent 2.1)\n"
+        "org.example.provided (software agent: Synthetic Tool 0.9)\n"
+        "c2pa.edited (software agent: Synthetic Indexed Agent 3.0)\n"
+        "c2pa.opened")
+
+
+def test_an_index_with_no_software_agent_behind_it_says_so():
+    rec = _acting([{"action": "c2pa.edited", "softwareAgentIndex": 5}], agents=AGENTS[:1])
+    assert rec["actions"] == [{"action": "c2pa.edited", "software_agent":
+                               "softwareAgentIndex 5, not in the assertion's softwareAgents"}]
+
+
+def test_actions_from_a_manifest_that_is_not_valid_are_marked():
+    rec = _acting(ACTIONS[:1], state="Invalid",
+                  failure=("signingCredential.untrusted", "assertion.dataHash.mismatch"))
+    assert rec["state"] == "invalid"
+    assert dict(pv.describe(rec))["Declared actions"] == (
+        "not backed by a valid signature:\n"
+        "c2pa.created (software agent: Synthetic Agent 2.1)")
+
+
+def test_a_manifest_that_declares_no_action_says_none_declared():
+    rec = _acting([])
+    assert rec["actions"] == []
+    assert dict(pv.describe(rec))["Declared actions"] == "none declared"
+
+
+def test_a_record_read_before_actions_were_kept_does_not_read_as_none():
+    rec = _acting(ACTIONS)
+    del rec["actions"]
+    assert dict(pv.describe(rec))["Declared actions"] == (
+        "not recorded by the GLEAPP that read this file "
+        "(gleapp provenance --force reads it again)")
+    # a file with no manifest has no actions to speak of
+    assert "Declared actions" not in dict(pv.describe(
+        {"state": "absent", "active_dst": None, "dst_class": "none", "xmp_dst": None}))
+
+
+def test_the_actions_kept_are_bounded_and_the_rest_counted():
+    many = [{"action": f"org.example.step{i}"} for i in range(70)]
+    rec = _acting(many)
+    assert len(rec["actions"]) == pv.MAX_ACTIONS == 64
+    assert rec["actions_omitted"] == 6
+    lines = dict(pv.describe(rec))["Declared actions"].splitlines()
+    assert lines[-1] == "and 6 more"
+    assert len(lines) == 65
+
+
 # -- the bytes ------------------------------------------------------------------------
 
 def _jpeg(*segments: bytes) -> bytes:

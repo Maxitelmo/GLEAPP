@@ -1450,7 +1450,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                         "alt_paths",            # the other storage views a file sat under
                         "cache_info",           # an app cache's key, often the URL it came from
                         "c2pa_signer",          # who signed its Content Credentials
-                        "c2pa_info",            # their claim generator, ingredients, codes
+                        "c2pa_info",            # claim generator, actions, ingredients, codes
                         "camera", "notes", "mime", "source", "created_dt",
                         "reviewed_by", "hashset_hit", "error",
                         "md5", "sha1", "sha256", "phash")
