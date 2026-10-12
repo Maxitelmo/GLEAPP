@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import archive, dedupe, detect, exocache, hashdb, imaging, lzc, nested, winsearch  # noqa: F401  (imaging: decoder setup)
+from . import archive, dedupe, detect, exocache, hashdb, imaging, lzc, nested, provenance, winsearch  # noqa: F401  (imaging: decoder setup)
 from .case import Case, Source
 from .hashing import crypto_hashes, perceptual_hashes
 from .ingest import _head, is_document, scan, sniff_kind
@@ -225,6 +225,20 @@ def add_documents(case: Case, *, progress=None) -> dict:
     return {"documents": documents, "added": added, "unavailable": unavailable}
 
 
+def _provenance_now(local: str) -> dict:
+    """The c2pa columns for a picture or video, from its bytes as processing holds
+    them (``local``: the file, or the copy pulled out of a zip or read out of an
+    image). What the bytes settle (no store, no library) is final; a file holding
+    a manifest store gets empty columns here and is read by the reader stage,
+    whose native library runs in a process of its own."""
+    record, request = provenance.prescan(local)
+    return dict(provenance.EMPTY_COLUMNS) if request else provenance.columns(record)
+
+
+def _needs_reader(fields: dict) -> bool:
+    return "c2pa_state" in fields and fields["c2pa_state"] is None
+
+
 def _process_one(case_root, thumb_dir, row, *, force: bool, keyframes: int, screen: bool,
                  rec: dict | None = None) -> dict:
     """Pure worker: no DB access. Returns a payload for the writer thread.
@@ -320,6 +334,12 @@ def _process_one_at(thumb_dir, row, local: str, *, force: bool, keyframes: int,
             if sniffed in ("image", "video"):
                 kind = sniffed
                 upd["kind"] = sniffed
+
+        # Before decoding, so a file that will not decode still has it recorded. From
+        # the row's own bytes even when what is decoded came out of them (a Snapchat
+        # bundle): those are what the pass reads, so the two give one answer.
+        if kind in ("image", "video"):
+            upd.update(_provenance_now(local))
 
         if kind == "image":
             im = imaging.load_for_processing(decode_path)   # Pillow/HEIC/KTX
@@ -427,6 +447,79 @@ def screen_pass(case: Case, *, workers: int = 4, progress=None) -> int:
     case.db.audit_log(case.examiner, "screen_pass", json.dumps(
         {"count": n[0], "backend": detect.face_backend()}))
     return n[0]
+
+
+# The rows that carry Content Credentials to read: pictures and videos with bytes.
+# An online-only placeholder has none, so it is never read and never "not read yet";
+# the gallery counts and filters unread rows with this too.
+PROVENANCE_ROWS = (
+    "kind IN ('image', 'video') AND "
+    f"(error IS NULL OR error NOT LIKE '{archive.PLACEHOLDER_ERROR}%')")
+# The not_checked rows a second read can change: every reason but the ones it gives
+# again (provenance.SETTLED_REASONS), matched on the record as provenance.columns writes
+# it. The gallery counts them for its button.
+RETRY_ROWS = "c2pa_state = 'not_checked'" + "".join(
+    f" AND instr(c2pa_info, '{json.dumps({'state_reason': r})[1:-1]}') = 0"
+    for r in provenance.SETTLED_REASONS)
+_PROVENANCE_BATCH = 25     # files per reader process and per commit
+
+
+def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = True,
+                    force: bool = False, trust: provenance.TrustLists | None = None,
+                    progress=None) -> dict:
+    """Read Content Credentials and the IPTC source type for pictures and videos.
+
+    ``ids`` limits it to those rows (processing hands over the files it found a
+    manifest store in). Otherwise it reads every row never read (NULL), and unless
+    ``retry`` is off the not_checked ones a second read can change (``RETRY_ROWS``),
+    when the c2pa library is there to read them; or every row with ``force``.
+    Bytes come from where processing takes them (``archive.local_copies``: the file
+    itself, or a copy under the case folder that is removed after the batch), and
+    the source is never written to. ``trust`` defaults to the lists GLEAPP carries.
+    """
+    trust = trust if trust is not None else provenance.trust_lists()
+    if ids is not None:
+        rows = []
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            rows += case.db.iter_files(
+                f"id IN ({','.join('?' * len(chunk))})", chunk)
+    else:
+        # without the library nothing not checked can change, so it is not read again
+        retry = retry and provenance.library_available()[0]
+        unread = "1" if force else (
+            f"(c2pa_state IS NULL OR ({RETRY_ROWS}))" if retry else "c2pa_state IS NULL")
+        rows = case.db.iter_files(f"{PROVENANCE_ROWS} AND {unread}")
+    recs = archive.source_records(case)
+    total, done = len(rows), 0
+    states: dict[str, int] = {}
+    versions: set[str] = set()
+    unavailable = 0
+    for i in range(0, total, _PROVENANCE_BATCH):
+        chunk = rows[i:i + _PROVENANCE_BATCH]
+        with archive.local_copies(case.root, recs, chunk) as (local, failed):
+            records = provenance.read_batch([str(p) for p in local.values()], trust=trust)
+            for r in chunk:
+                if r["id"] in failed:
+                    unavailable += 1        # left unread; the source is not there now
+                    continue
+                rec = records[str(local[r["id"]])]
+                case.db.update_file(r["id"], **provenance.columns(rec))
+                if rec.get("library_version"):
+                    versions.add(rec["library_version"])
+                states[rec["state"]] = states.get(rec["state"], 0) + 1
+        done += len(chunk)
+        case.db.commit()
+        if progress:
+            progress(done, total)
+    counts = {"read": sum(states.values()), "states": dict(sorted(states.items())),
+              "unavailable": unavailable}
+    case.db.audit_log(case.examiner, "provenance", json.dumps({
+        **counts, "scope": "processing" if ids is not None else
+        ("all" if force else "unread" + (" and not checked" if retry else "")),
+        "library": sorted(versions) or (provenance.library_available()[1] or "not used"),
+        "trust_lists": trust.describe()}))
+    return counts
 
 
 def rematch_hashes(case: Case, *, progress=None) -> int:
@@ -598,6 +691,7 @@ def _video_result_to_payload(row, res: dict | None, *, screen: bool,
             err = imaging.scrub_local_paths(str(exc), row["path"]) or type(exc).__name__
             return {"id": fid, "status": "error",
                     "fields": {**upd, "error": err[:300]}, "keyframes": []}
+    upd.update(_provenance_now(src))
     if res is None:
         upd["error"] = _video_failure_reason(
             src, "video could not be decoded (corrupt or unsupported)")
@@ -714,8 +808,14 @@ def process(
     stats.discovered = len(rows)
     total = len(rows)
     done = [0]
+    for_reader: list[int] = []
+    not_checked = [0]
 
     def _write(res: dict) -> None:
+        if _needs_reader(res["fields"]):
+            for_reader.append(res["id"])
+        elif res["fields"].get("c2pa_state") == "not_checked":
+            not_checked[0] += 1
         if res["status"] == "ok":
             stats.processed += 1
         elif res["status"] == "skip":
@@ -772,6 +872,20 @@ def process(
     stats.stages["media_processing"] = (
         f"ok: {stats.processed} processed, {stats.skipped} skipped, "
         f"{stats.errors} errored")
+
+    # Content Credentials for the files this run found a manifest store in. Rows an
+    # older build processed stay unread (NULL) until the examiner runs the pass.
+    if for_reader:
+        read = run_stage("provenance", "Reading Content Credentials…",
+                         lambda: provenance_pass(case, ids=for_reader, progress=progress))
+        if read is not None:
+            stats.stages["provenance"] = f"ok: {read['read']} read by the c2pa reader"
+    elif not_checked[0]:
+        # the bytes showed a store (or could not be walked) and there is no reader
+        stats.stages["provenance"] = (f"ok: {not_checked[0]} not checked: "
+                                      f"{provenance.library_available()[1] or 'see each file'}")
+    else:
+        stats.stages["provenance"] = "ok: no manifest store for the reader"
 
     # Known-hash matching (needs all hashes present). Each of these stages
     # reports its own done/total through the same `progress` callback the
