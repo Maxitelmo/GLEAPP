@@ -10,23 +10,21 @@ A case processed before this existed keeps NULL in the four columns, which means
 gallery's button); processing does not start reading a whole old case on its own.
 """
 
-import io
 import json
-import struct
 import sys
 import time
 import zipfile
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
+import c2pafake as cf  # pylint: disable=import-error
+from c2pafake import DST  # pylint: disable=import-error
 from gleapp import provenance as pv
 from gleapp.case import Source, open_case
 from gleapp.db import SCHEMA_VERSION, CaseDB
 from gleapp.pipeline import ingest_sources, process, provenance_pass
 
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
 COLUMNS = ("c2pa_state", "c2pa_dst_class", "c2pa_signer", "c2pa_info")
 
 
@@ -41,39 +39,13 @@ def _isolate_appconfig(tmp_path_factory, monkeypatch):
     stash.close()
 
 
-def _jpeg(*segments: bytes, color=(40, 90, 160)) -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (32, 24), color).save(buf, "JPEG")
-    data = buf.getvalue()
-    return data[:2] + b"".join(segments) + data[2:]
-
-
-def _segment(marker: int, payload: bytes) -> bytes:
-    return bytes((0xFF, marker)) + struct.pack(">H", len(payload) + 2) + payload
-
-
-def _xmp_dst(term: str) -> bytes:
-    xmp = (b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description '
-           b'xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/" '
-           b'Iptc4xmpExt:DigitalSourceType="' + DST.encode() + term.encode() +
-           b'"/></rdf:RDF></x:xmpmeta>')
-    return _segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + xmp)
-
-
-def _store_stub() -> bytes:
-    """A JPEG XT APP11 segment that looks like a C2PA store to the byte scan; no
-    reader can validate it."""
-    desc = b"jumd" + bytes(16) + b"\x03c2pa\x00"
-    jumb = struct.pack(">I", 12 + len(desc)) + b"jumb" + struct.pack(">I", 4 + len(desc)) + desc
-    return _segment(0xEB, b"JP\x00\x01\x00\x00\x00\x01" + jumb)
-
-
 def _folder(tmp_path):
     ev = tmp_path / "evidence"
     ev.mkdir()
-    (ev / "plain.jpg").write_bytes(_jpeg())
-    (ev / "declared.jpg").write_bytes(_jpeg(_xmp_dst("trainedAlgorithmicMedia"), color=(9, 9, 9)))
-    (ev / "stub.jpg").write_bytes(_jpeg(_store_stub(), color=(200, 10, 10)))
+    (ev / "plain.jpg").write_bytes(cf.jpeg())
+    (ev / "declared.jpg").write_bytes(cf.jpeg(cf.app1_xmp(DST + "trainedAlgorithmicMedia"),
+                                              color=(9, 9, 9)))
+    (ev / "stub.jpg").write_bytes(cf.jpeg(cf.app11_store(), color=(200, 10, 10)))
     return ev
 
 
@@ -138,8 +110,8 @@ def test_a_file_that_will_not_decode_still_has_its_credentials_read(tmp_path, mo
     _no_library(monkeypatch)
     ev = tmp_path / "evidence"
     ev.mkdir()
-    seg = _xmp_dst("digitalCapture")
-    (ev / "cut.jpg").write_bytes(_jpeg(seg)[:2 + len(seg) + 120])   # cut after the XMP
+    seg = cf.app1_xmp(DST + "digitalCapture")
+    (ev / "cut.jpg").write_bytes(cf.jpeg(seg)[:2 + len(seg) + 120])   # cut after the XMP
     case = open_case(tmp_path / "case", create=True, examiner="t")
     try:
         ingest_sources(case, [Source(name="ev", path=str(ev))])
@@ -214,8 +186,8 @@ def test_the_pass_reads_a_zip_in_place_and_never_writes_to_it(tmp_path, monkeypa
     _no_library(monkeypatch)
     z = tmp_path / "extraction.zip"
     with zipfile.ZipFile(z, "w") as zf:
-        zf.writestr("Dump/DCIM/declared.jpg", _jpeg(_xmp_dst("screenCapture")))
-        zf.writestr("Dump/DCIM/stub.jpg", _jpeg(_store_stub()))
+        zf.writestr("Dump/DCIM/declared.jpg", cf.jpeg(cf.app1_xmp(DST + "screenCapture")))
+        zf.writestr("Dump/DCIM/stub.jpg", cf.jpeg(cf.app11_store()))
     before = (z.read_bytes(), z.stat().st_mtime_ns)
     case = open_case(tmp_path / "case", create=True, examiner="t")
     try:
@@ -246,7 +218,7 @@ def test_signed_files_are_read_by_the_reader_process_during_processing(tmp_path)
     ev = tmp_path / "evidence"
     ev.mkdir()
     (ev / "generated.jpg").write_bytes(
-        sign(chain, _jpeg(), "image/jpeg", created("trainedAlgorithmicMedia")))
+        sign(chain, cf.jpeg(), "image/jpeg", created("trainedAlgorithmicMedia")))
     raw = tmp_path / "raw.mp4"
     writer = cv2.VideoWriter(str(raw), cv2.VideoWriter_fourcc(*"mp4v"), 10, (64, 48))
     for i in range(10):
@@ -254,7 +226,7 @@ def test_signed_files_are_read_by_the_reader_process_during_processing(tmp_path)
     writer.release()
     (ev / "clip.mp4").write_bytes(
         sign(chain, raw.read_bytes(), "video/mp4", created("digitalCapture")))
-    (ev / "plain.jpg").write_bytes(_jpeg(color=(1, 2, 3)))
+    (ev / "plain.jpg").write_bytes(cf.jpeg(color=(1, 2, 3)))
     case = open_case(tmp_path / "case", create=True, examiner="t")
     try:
         ingest_sources(case, [Source(name="ev", path=str(ev))])
@@ -281,7 +253,7 @@ def test_a_reader_that_dies_costs_the_file_it_died_on(tmp_path, monkeypatch):
     paths = []
     for n in names:
         p = tmp_path / n
-        p.write_bytes(_jpeg(_store_stub()))
+        p.write_bytes(cf.jpeg(cf.app11_store()))
         paths.append(str(p))
     fake = tmp_path / "fake_worker.py"
     fake.write_text(
@@ -315,7 +287,7 @@ def test_the_reader_process_is_handed_no_path_on_its_command_line(tmp_path, monk
         return real(cmd, *args, **kwargs)  # pylint: disable=subprocess-run-check
 
     p = tmp_path / "s.jpg"
-    p.write_bytes(_jpeg(_store_stub()))
+    p.write_bytes(cf.jpeg(cf.app11_store()))
     monkeypatch.setattr(subprocess, "run", spy)
     monkeypatch.setattr(pv, "library_available", lambda: (True, None))
     pv.read_batch([str(p)], trust=pv.TrustLists())

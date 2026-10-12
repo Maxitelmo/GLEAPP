@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
+from c2pafake import DST  # noqa: F401  (re-exported for the signed tests)
 C2PA_CLAIM_SIGNING = ObjectIdentifier("1.3.6.1.4.1.62558.2.1")
 # What the Builder checks its own signature with. Its default policy leaves the C2PA
 # EKU out, the same gap provenance.reader_settings closes for reading.

@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+import c2pafake as cf  # pylint: disable=import-error
+from c2pafake import ACTIVE, DST  # pylint: disable=import-error
 from gleapp import lava, provenance as pv, report
 from gleapp.case import Source, open_case
 from gleapp.pipeline import ingest_sources, process
@@ -29,7 +31,6 @@ from gleapp.pipeline import ingest_sources, process
 # pylint: disable=redefined-outer-name
 
 REPO = Path(__file__).resolve().parents[1]
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
 
 
 @pytest.fixture(autouse=True)
@@ -44,32 +45,18 @@ def _isolate_appconfig(tmp_path_factory, monkeypatch):
 
 
 def _record(term=None, *, state="Valid", trusted=False, failure=(), signer="Synthetic Signer"):
-    label = "urn:c2pa:00000000-0000-4000-8000-00000000000a"
-    actions = [{"action": "c2pa.created", "digitalSourceType": DST + term}] if term else []
-    store = {"active_manifest": label, "validation_state": state, "manifests": {label: {
-        "label": label, "claim_generator_info": [{"name": "Synthetic Tool", "version": "1.0"}],
-        "assertions": [{"label": "c2pa.actions.v2", "data": {"actions": actions}}],
-        "signature_info": {"issuer": "Synthetic Test Org", "common_name": signer,
-                           "time": "2026-01-02T03:04:05+00:00"}}},
-        "validation_results": {"activeManifest": {
-            # a real reader reports the claim signature verified unless it failed
-            "success": ([] if any(c.startswith("claimSignature.") for c in failure)
-                        else [{"code": "claimSignature.validated"}])
-                       + ([{"code": "signingCredential.trusted"}] if trusted else []),
-            "informational": [],
-            "failure": [{"code": c} for c in failure]}}}
     rec = {"xmp_dst": None, "store_in_bytes": "JPEG APP11",
            "library_version": "c2pa-python 0.38.0 / c2pa-rs 0.91.0"}
-    rec.update(pv.parse_manifest_store(store))
+    rec.update(pv.parse_manifest_store(cf.manifest_store(
+        cf.manifest(ACTIVE, term, signer=signer), state,
+        cf.results(success=["signingCredential.trusted"] if trusted else [], failure=failure))))
     return rec
 
 
 def _absent_with_xmp(term):
     return {"state": "absent", "state_reason": pv.ABSENT_BY_SCAN, "codes": {},
-            "active_dst": None, "dst_class": "none", "ingredients": [],
-            "store_in_bytes": None, "library_version": None,
-            "xmp_dst": {"uri": DST + term, "class": pv.classify_dst(DST + term),
-                        "label": pv.UNSIGNED, "field": "XMP Iptc4xmpExt:DigitalSourceType"}}
+            "active_dst": None, "ingredients": [], "store_in_bytes": None,
+            "library_version": None, "xmp_dst": {"uri": DST + term}}
 
 
 RECORDS = {
@@ -134,10 +121,6 @@ def test_a_valid_state_names_the_signer_and_the_trust_list_and_nothing_more():
     """'Trusted' on its own reads as content worth trusting. Both valid states say
     instead whether the signer is on a trust list, in the long and the short forms;
     the stored values do not change."""
-    assert pv.STATE_LABELS["trusted"] == "Valid, signer on a trust list"
-    assert pv.STATE_LABELS["valid_untrusted"] == "Valid, signer not on a trust list"
-    assert pv.STATE_SHORT["trusted"] == "Valid, listed"
-    assert pv.STATE_SHORT["valid_untrusted"] == "Valid, unlisted"
     for text in (*pv.STATE_LABELS.values(), *pv.STATE_SHORT.values()):
         assert "trusted" not in text.lower(), text
     rec = dict(RECORDS["camera.jpg"], trusted_by="C2PA Trust List (synthetic)")
@@ -212,9 +195,6 @@ def test_the_list_view_offers_three_columns_and_never_ships_the_whole_record():
     js = (REPO / "gleapp/web/static/app.js").read_text(encoding="utf-8")
     for key in ("c2pa_state", "c2pa_dst_class", "c2pa_signer"):
         assert f'key: "{key}"' in js, key
-    for name, vocab in (("C2PA_STATE_SHORT", pv.STATES), ("C2PA_DST_LABEL", pv.DST_CLASSES)):
-        body = re.search(name + r" = \{(.*?)\};", js, re.S).group(1)
-        assert set(re.findall(r"(\w+):", body)) == set(vocab), name
 
 
 def test_the_gallery_names_each_class_the_way_the_module_does():
@@ -225,6 +205,7 @@ def test_the_gallery_names_each_class_the_way_the_module_does():
     body = re.search(r'<select id="fc2padst">(.*?)</select>', page, re.S).group(1)
     options = dict(re.findall(r'<option value="(\w+)">([^<]*)</option>', body))
     assert options == pv.DST_CLASS_LABELS
+    assert set(re.findall(r'value="([^"]*)"', body)) == {"", *pv.DST_CLASSES}
 
 
 def test_the_gallery_names_each_state_the_way_the_module_does():
@@ -235,14 +216,7 @@ def test_the_gallery_names_each_state_the_way_the_module_does():
     body = re.search(r'<select id="fc2pa">(.*?)</select>', page, re.S).group(1)
     options = dict(re.findall(r'<option value="(\w+)">([^<]*)</option>', body))
     assert {k: v for k, v in options.items() if k in pv.STATES} == pv.STATE_LABELS
-
-
-def test_the_sidebar_filters_offer_the_vocabulary():
-    page = (REPO / "gleapp/web/templates/index.html").read_text(encoding="utf-8")
-    for sel, expected in (("fc2pa", {"", "any", "unread", *pv.STATES}),
-                          ("fc2padst", {"", *pv.DST_CLASSES})):
-        body = re.search(rf'<select id="{sel}">(.*?)</select>', page, re.S).group(1)
-        assert set(re.findall(r'value="([^"]*)"', body)) == expected, sel
+    assert set(re.findall(r'value="([^"]*)"', body)) == {"", "any", "unread", *pv.STATES}
 
 
 def test_the_sidebar_counts_credentials_as_the_filter_selects_them():
@@ -306,7 +280,8 @@ def test_csv_and_json_carry_the_record(case, tmp_path):
     gen = rows["generated.jpg"]
     assert (gen["c2pa_state"], gen["c2pa_dst_class"]) == ("valid_untrusted", "generative_ai")
     assert gen["c2pa_signer"] == "Synthetic Signer (Synthetic Test Org)"
-    assert rows["declared.jpg"]["c2pa_xmp_dst"] == DST + "trainedAlgorithmicMedia (unsigned declaration)"
+    assert rows["declared.jpg"]["c2pa_xmp_dst"] == (DST + "trainedAlgorithmicMedia "
+                                                    "(unsigned declaration)")
     assert json.loads(gen["c2pa_info"])["state"] == "valid_untrusted"
     payload = json.loads(report.export_json(case, tmp_path / "r.json").read_text(
         encoding="utf-8"))

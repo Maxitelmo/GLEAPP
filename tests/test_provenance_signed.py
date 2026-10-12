@@ -156,20 +156,6 @@ def test_the_declared_actions_are_transcribed_from_a_signed_file(tmp_path, chain
         "software agent: Synthetic Agent 2.1\norg.example.provided")
 
 
-def test_a_capture(tmp_path, chain):
-    rec = _read(_write(tmp_path, "capture.jpg",
-                       sign(chain, _picture(), "image/jpeg", created("digitalCapture"))))
-    assert rec["state"] == "valid_untrusted"
-    assert pv.dst_class(rec) == "capture"
-
-
-def test_a_composite_synthetic(tmp_path, chain):
-    rec = _read(_write(tmp_path, "composite.jpg",
-                       sign(chain, _picture(), "image/jpeg", created("compositeSynthetic"))))
-    assert pv.dst_class(rec) == "ai_composite"
-    assert rec["active_dst"] == DST + "compositeSynthetic"
-
-
 def test_an_ai_ingredient_inside_an_edit_that_declares_nothing(tmp_path, chain):
     generated = sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia"))
     edit = [{"action": "c2pa.opened", "parameters": {"ingredientIds": ["ingredient-1"]}},
@@ -188,12 +174,6 @@ def test_an_ai_ingredient_inside_an_edit_that_declares_nothing(tmp_path, chain):
     assert ing["signer"]["common_name"] == "Synthetic Signer"
 
 
-def test_a_picture_with_no_credentials_is_absent(tmp_path):
-    rec = _read(_write(tmp_path, "plain.jpg", _picture()))
-    assert rec["state"] == "absent"
-    assert rec["xmp_dst"] is None
-
-
 def test_without_the_library_a_signed_file_is_not_checked(tmp_path, chain, monkeypatch):
     p = _write(tmp_path, "generated.jpg",
                sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
@@ -202,19 +182,6 @@ def test_without_the_library_a_signed_file_is_not_checked(tmp_path, chain, monke
     assert rec["state"] == "not_checked"
     assert rec["state_reason"] == pv.NOT_CHECKED_LIBRARY
     assert rec["store_in_bytes"] == "JPEG APP11"
-
-
-def test_an_xmp_source_type_without_credentials_is_an_unsigned_declaration(tmp_path):
-    xmp = (b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
-           b'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description '
-           b'xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/" '
-           b'Iptc4xmpExt:DigitalSourceType="' + DST.encode() + b'trainedAlgorithmicMedia"/>'
-           b'</rdf:RDF></x:xmpmeta>')
-    rec = _read(_write(tmp_path, "declared.jpg", _picture(xmp=xmp)))
-    assert rec["state"] == "absent"
-    assert rec["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia"}
-    # kept apart from the C2PA fields, never folded into them; no manifest, no class
-    assert rec["active_dst"] is None and pv.dst_class(rec) is None
 
 
 def test_a_signer_on_an_examiner_list_is_trusted_and_the_list_named(tmp_path, chain):

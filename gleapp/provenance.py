@@ -136,7 +136,7 @@ CAVEAT = (
 # from real life; and "Algorithmically-altered media" (algorithmicallyEnhanced), an
 # algorithm's change, initiated or configured by a human, that leaves the main content
 # as it was, such as sharpening or noise reduction.
-_DST_GROUPS = {
+DST_GROUPS = {
     "generative_ai": ("trainedAlgorithmicMedia", "trainedAlgorithmicData"),
     "ai_edited": ("compositeWithTrainedAlgorithmicMedia",),
     "ai_composite": ("compositeSynthetic",),
@@ -150,11 +150,11 @@ _DST_GROUPS = {
     "virtual_recording": ("virtualRecording",),
     "human_edit": ("humanEdits", "minorHumanEdits"),
 }
-_DST_TERM_CLASS = {term: cls for cls, terms in _DST_GROUPS.items() for term in terms}
+_DST_TERM_CLASS = {term: cls for cls, terms in DST_GROUPS.items() for term in terms}
 # The classes whose label names AI, and their terms: what the gallery's "AI declared"
 # mark looks for (``ai_declaration``).
 AI_CLASSES = frozenset(("generative_ai", "ai_edited", "ai_composite"))
-AI_TERMS = tuple(term for cls in sorted(AI_CLASSES) for term in _DST_GROUPS[cls])
+AI_TERMS = tuple(term for cls in sorted(AI_CLASSES) for term in DST_GROUPS[cls])
 # A term of either vocabulary, as the whole URI: the namespace (group 1) then the term.
 _DST_URI_FORM = re.compile(r"(?i:https?://(cv\.iptc\.org/newscodes|c2pa\.org)"
                            r"/digitalsourcetype/)([A-Za-z]+)/?")

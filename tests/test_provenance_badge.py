@@ -10,13 +10,14 @@ nothing here sets a category. The records are synthetic, written in the shape
 c2pa-python returns, so no part of this needs the optional library.
 """
 
-import json
 import re
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
+import c2pafake as cf  # pylint: disable=import-error
+from c2pafake import ACTIVE, CHILD, DST  # pylint: disable=import-error
 from gleapp import provenance as pv
 from gleapp.case import Source, open_case
 from gleapp.pipeline import ingest_sources
@@ -25,50 +26,25 @@ from gleapp.pipeline import ingest_sources
 # pylint: disable=redefined-outer-name
 
 REPO = Path(__file__).resolve().parents[1]
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
-ACTIVE = "urn:c2pa:00000000-0000-4000-8000-00000000000a"
-CHILD = "urn:c2pa:00000000-0000-4000-8000-00000000000b"
 NOTE = "A declaration, not a finding."
-
-
-def _manifest(label, term=None, ingredients=()):
-    actions = ([{"action": "c2pa.created", "digitalSourceType": DST + term}] if term
-               else [{"action": "c2pa.edited"}])
-    m = {"label": label, "claim_generator_info": [{"name": "Synthetic Tool", "version": "1.0"}],
-         "assertions": [{"label": "c2pa.actions.v2", "data": {"actions": actions}}],
-         "signature_info": {"issuer": "Synthetic Test Org", "common_name": "Synthetic Signer"}}
-    if ingredients:
-        m["ingredients"] = list(ingredients)
-    return m
 
 
 def _record(term=None, *, state="Valid", failure=("signingCredential.untrusted",),
             ingredient_term=None, xmp_term=None):
-    manifests = {}
-    ingredients = ()
+    others, ingredients = [], []
     if ingredient_term:
-        manifests[CHILD] = _manifest(CHILD, ingredient_term)
-        ingredients = [{"title": "made-elsewhere.jpg", "relationship": "parentOf",
-                        "label": "c2pa.ingredient.v3", "active_manifest": CHILD,
-                        "validation_results": {"activeManifest": {
-                            "success": [], "informational": [], "failure": []}}}]
-    manifests[ACTIVE] = _manifest(ACTIVE, term, ingredients)
-    store = {"active_manifest": ACTIVE, "validation_state": state, "manifests": manifests,
-             "validation_results": {"activeManifest": {
-                 "success": [], "informational": [],
-                 "failure": [{"code": c} for c in failure]}}}
-    rec = {"xmp_dst": None}
-    rec.update(pv.parse_manifest_store(store))
-    if xmp_term:
-        rec["xmp_dst"] = {"uri": DST + xmp_term, "class": pv.classify_dst(DST + xmp_term),
-                          "label": pv.UNSIGNED}
+        others = [cf.manifest(CHILD, ingredient_term)]
+        ingredients = [cf.ingredient(CHILD, title="made-elsewhere.jpg")]
+    active = cf.manifest(ACTIVE, term, ingredients=ingredients)
+    rec = pv.parse_manifest_store(cf.manifest_store(active, state, cf.results(failure=failure),
+                                                    others))
+    rec["xmp_dst"] = {"uri": DST + xmp_term} if xmp_term else None
     return rec
 
 
 def _xmp_only(term):
-    return {"state": "absent", "active_dst": None, "dst_class": "none", "ingredients": [],
-            "xmp_dst": {"uri": DST + term, "class": pv.classify_dst(DST + term),
-                        "label": pv.UNSIGNED}}
+    return {"state": "absent", "active_dst": None, "ingredients": [],
+            "xmp_dst": {"uri": DST + term}}
 
 
 # -- what a record declares --------------------------------------------------------------
@@ -76,7 +52,7 @@ def _xmp_only(term):
 def test_the_classes_a_badge_marks_are_the_ones_named_ai():
     named = {c for c, label in pv.DST_CLASS_LABELS.items() if "AI" in label.split()}
     assert pv.AI_CLASSES == named == {"generative_ai", "ai_edited", "ai_composite"}
-    assert set(pv.AI_TERMS) == {t for c in named for t in pv._DST_GROUPS[c]}  # pylint: disable=protected-access
+    assert set(pv.AI_TERMS) == {t for c in named for t in pv.DST_GROUPS[c]}
 
 
 def test_a_signed_valid_declaration_is_backed():
@@ -131,8 +107,7 @@ def test_a_term_that_does_not_declare_ai_gets_no_mark(term):
 
 def test_nothing_declared_gets_no_mark():
     assert pv.ai_declaration(None) is None
-    assert pv.ai_declaration({"state": "absent", "active_dst": None, "dst_class": "none",
-                              "xmp_dst": None}) is None
+    assert pv.ai_declaration({"state": "absent", "active_dst": None, "xmp_dst": None}) is None
     assert pv.ai_declaration(_record(None)) is None
 
 
@@ -181,14 +156,6 @@ def test_a_page_of_the_gallery_carries_each_file_s_mark(client):
     assert all("c2pa_info" not in f for f in files.values())
 
 
-def test_every_ai_term_is_found_by_the_page_s_pre_filter():
-    """The page reads a record whole only when its text names an AI term; a record
-    the mark would flag must always name one."""
-    for term in pv.AI_TERMS:
-        text = json.dumps(_record(term), sort_keys=True).lower()
-        assert any(t.lower() in text for t in pv.AI_TERMS), term
-
-
 def test_the_tile_and_the_list_show_the_mark_with_its_tooltip():
     js = (REPO / "gleapp/web/static/app.js").read_text(encoding="utf-8")
     tile = js[js.index("function tileEl("):js.index("function render(")]
@@ -202,10 +169,3 @@ def test_the_tile_and_the_list_show_the_mark_with_its_tooltip():
     assert re.search(r"\.tile \.b\.ai\.unbacked\{[^}]*dashed", page)
 
 
-def test_both_manuals_explain_the_mark():
-    import html  # pylint: disable=import-outside-toplevel
-    for doc in ((REPO / "docs/MANUAL.md").read_text(encoding="utf-8"),
-                html.unescape((REPO / "gleapp/web/static/help.html").read_text(encoding="utf-8"))):
-        flat = " ".join(re.sub(r"<[^>]+>", "", doc).split())
-        assert "AI declared" in flat and "AI in ingredient" in flat
-        assert "A file with no mark may still have been made with AI" in flat

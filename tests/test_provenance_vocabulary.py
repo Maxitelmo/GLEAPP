@@ -15,6 +15,7 @@ import json
 import pytest
 from PIL import Image
 
+from c2pafake import DST  # pylint: disable=import-error
 from gleapp import provenance as pv
 from gleapp.case import Source, open_case
 from gleapp.pipeline import ingest_sources
@@ -22,7 +23,6 @@ from gleapp.pipeline import ingest_sources
 # a fixture argument shadows the fixture function, as everywhere else in this suite
 # pylint: disable=redefined-outer-name
 
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
 RECORD = {"state": "valid_untrusted", "codes": {}, "signer": None,
           "active_manifest": "urn:c2pa:00000000-0000-4000-8000-00000000000a",
           "active_dst": DST + "trainedAlgorithmicMedia", "ingredients": [], "xmp_dst": None}

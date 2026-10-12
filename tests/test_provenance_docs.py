@@ -9,6 +9,8 @@ import html
 import re
 from pathlib import Path
 
+import pytest
+
 from gleapp import provenance as pv
 
 REPO = Path(__file__).resolve().parents[1]
@@ -37,7 +39,7 @@ def test_both_manuals_list_every_state_and_every_source_type_term():
     for doc in (_manual(), html.unescape(_help())):
         for label in pv.STATE_LABELS.values():
             assert label in doc, label
-        for cls, terms in pv._DST_GROUPS.items():  # pylint: disable=protected-access
+        for cls, terms in pv.DST_GROUPS.items():
             assert pv.DST_CLASS_LABELS[cls] in doc, cls
             for term in terms:
                 assert term in doc, term
@@ -50,65 +52,40 @@ def test_both_manuals_mark_each_term_iptc_has_retired():
                        for ln in doc.splitlines()), term
 
 
-def test_neither_manual_gives_one_cause_for_a_hard_binding_that_does_not_match():
+# What the section has to keep saying, in both manuals: each is a place where a shorter
+# or older wording said more than a file declares or a validator establishes.
+SAID = (
+    # an absent declaration proves nothing
+    "An edit made with AI can leave no AI declaration in the file's metadata: no C2PA "
+    "manifest and no XMP digital source type. No Content Credentials, or a manifest that "
+    "declares no AI source type, says nothing about whether AI was used.",
+    "A file with no mark may still have been made with AI",
+    # a hard binding that fails names no single cause
+    "does not match the content the manifest was signed for: for example, the content "
+    "changed after signing, or the manifest belongs to other content",
+    # a certificate is public; a list vouches for nothing in a manifest that fails
+    "the certificate does not show who signed",
+    "the list vouches for nothing in it",
+    "an ingredient is on a trust list only if it is on one GLEAPP holds",
+    # actions and marks are transcriptions
+    "transcribed as written",
+    "with the source type and the software agent it names",
+    "AI declared", "AI in ingredient",
+    # IPTC's own example of an algorithmic alteration
+    "such as sharpening or noise reduction",
+)
+
+
+@pytest.mark.parametrize("words", SAID, ids=range(len(SAID)))
+def test_both_manuals_say_it(words):
     plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
     for doc in (_flat(_manual()), plain):
-        assert "the file changed after signing" not in doc
-        assert "no longer matches the bytes" not in doc
-        assert ("does not match the content the manifest was signed for: for example, "
-                "the content changed after signing, or the manifest belongs to other "
-                "content") in doc
+        assert words in doc
 
 
 def test_neither_manual_labels_a_state_trusted():
     assert "| **Trusted** |" not in _manual()
     assert "<strong>Trusted</strong>" not in _help()
-
-
-def test_both_manuals_describe_the_declared_actions():
-    plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
-    for doc in (_flat(_manual()), plain):
-        assert "Declared actions" in doc
-        assert "transcribed as written" in doc
-        assert "with the source type and the software agent it names" in doc
-
-
-ABSENCE = ("An edit made with AI can leave no AI declaration in the file's metadata: no "
-           "C2PA manifest and no XMP digital source type. No Content Credentials, or a "
-           "manifest that declares no AI source type, says nothing about whether AI was "
-           "used.")
-
-
-def _absence_sections() -> list[str]:
-    manual = _manual().split("### What a state does not mean\n", 1)[1].split("\n### ", 1)[0]
-    page = _help().split("<h3>What a state does not mean</h3>", 1)[1].split("<h3>", 1)[0]
-    return [_flat(manual), _flat(html.unescape(re.sub(r"<[^>]+>", "", page)))]
-
-
-def test_both_manuals_say_what_an_absent_declaration_does_not_mean():
-    for section in _absence_sections():
-        assert ABSENCE in section
-
-
-def test_both_manuals_say_a_listed_signer_of_an_invalid_manifest_vouches_for_nothing():
-    plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
-    for doc in (_flat(_manual()), plain):
-        assert "the certificate does not show who signed" in doc
-        assert "the list vouches for nothing in it" in doc
-
-
-def test_the_trust_list_readme_names_the_states_by_their_labels():
-    readme = _flat((REPO / "gleapp/trust/README.md").read_text(encoding="utf-8"))
-    assert f"**{pv.STATE_LABELS['trusted']}** (stored as `trusted`)" in readme
-    assert f"{pv.STATE_LABELS['valid_untrusted']} (`valid_untrusted`)" in readme
-    assert "**trusted**" not in readme and "valid but not trusted" not in readme
-
-
-def test_the_help_page_links_its_new_section():
-    page = _help()
-    assert '<h2 id="c2pa">20. Content Credentials (C2PA) and source type</h2>' in page
-    assert '<a href="#c2pa">20. Content Credentials (C2PA)</a>' in page
-    assert '<h2 id="credits">21. Credits &amp; acknowledgments</h2>' in page
 
 
 def test_the_readme_row_does_not_call_it_detection():

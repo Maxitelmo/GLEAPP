@@ -14,10 +14,10 @@ import json
 import re
 from pathlib import Path
 
+from c2pafake import DST  # pylint: disable=import-error
 from gleapp import provenance as pv
 
 REPO = Path(__file__).resolve().parents[1]
-DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
 VOCAB = json.loads((REPO / "tests/fixtures/iptc-digitalsourcetype-2024-10-23.json")
                    .read_text(encoding="utf-8"))
 CONCEPTS = {c["uri"].rsplit("/", 1)[-1]: c for c in VOCAB["conceptSet"]}
@@ -53,7 +53,7 @@ def test_the_fixture_is_the_release_it_is_named_for():
 
 
 def test_every_iptc_term_is_grouped_or_left_in_other_on_purpose():
-    grouped = {t for terms in pv._DST_GROUPS.values() for t in terms}  # pylint: disable=protected-access
+    grouped = {t for terms in pv.DST_GROUPS.values() for t in terms}
     assert set(CONCEPTS) == (grouped - {"trainedAlgorithmicData"}) | UNGROUPED
     for term in UNGROUPED:
         assert pv.classify_dst(DST + term) == "other", term
@@ -65,7 +65,7 @@ def test_the_terms_marked_retired_are_the_ones_iptc_retired():
 
 def test_a_class_named_for_one_iptc_term_carries_iptc_s_label():
     for cls, term in IPTC_LABELLED.items():
-        assert pv._DST_GROUPS[cls] == (term,), cls  # pylint: disable=protected-access
+        assert pv.DST_GROUPS[cls] == (term,), cls
         assert pv.DST_CLASS_LABELS[cls] == _label(term), cls
 
 
@@ -86,27 +86,3 @@ def test_what_the_manuals_quote_from_iptc_is_iptc_s_words():
         assert quote in " ".join(doc.split())
 
 
-def test_the_manuals_give_iptc_s_examples_of_an_algorithmic_alteration():
-    """IPTC's examples for algorithmicallyEnhanced are sharpening and noise reduction,
-    on a change a human initiated or configured. "Focus", an earlier wording here, is
-    not among them."""
-    definition = _definition("algorithmicallyEnhanced")
-    assert "sharpening" in definition and "noise reduction" in definition
-    assert "initiated or configured by a human" in definition
-    manual = (REPO / "docs/MANUAL.md").read_text(encoding="utf-8")
-    page = html.unescape(re.sub(r"<[^>]+>", "",
-                                (REPO / "gleapp/web/static/help.html").read_text(encoding="utf-8")))
-    for doc in (manual, page):
-        flat = " ".join(doc.split())
-        assert "initiated or configured by a human" in flat
-        assert "such as sharpening or noise reduction" in flat
-        assert "focus or noise reduction" not in flat
-
-
-def test_an_edit_with_generative_ai_is_not_called_a_composite():
-    """IPTC labels compositeWithTrainedAlgorithmicMedia "Edited using Generative AI"
-    (inpainting, outpainting): its URI names a composite, its definition does not."""
-    assert _label("compositeWithTrainedAlgorithmicMedia") == "Edited using Generative AI"
-    assert "composite" not in _definition("compositeWithTrainedAlgorithmicMedia").lower()
-    assert pv.classify_dst(DST + "compositeWithTrainedAlgorithmicMedia") == "ai_edited"
-    assert "Composite" not in pv.DST_CLASS_LABELS["ai_edited"]

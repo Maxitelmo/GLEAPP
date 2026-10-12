@@ -13,37 +13,26 @@ that a trusted signer chained to.
 
 import base64
 import hashlib
-import io
 import json
 import re
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
+import c2pafake as cf  # pylint: disable=import-error
 from c2pafake import install_fake_c2pa, read_in_process  # pylint: disable=import-error
 from gleapp import provenance as pv
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUST = ROOT / "gleapp" / "trust"
 
-# conformance-public at 43a0a6f09091a062083a4ba33e3acc19dd721282, fetched 2026-10-06
-PINNED = {
-    "C2PA-TRUST-LIST.pem": (
-        "75cacc98b79ecac33713c7ecfb58d4a0ef383f3c1f886e7409f9e37e8664aea5", 30),
-    "C2PA-TSA-TRUST-LIST.pem": (
-        "c688d3555f4a2f1f8d663472bbd37888ff234abdd234c25934c0f9292e4eb5c9", 22),
-}
-SIGNERS = PINNED["C2PA-TRUST-LIST.pem"][0]
-TSAS = PINNED["C2PA-TSA-TRUST-LIST.pem"][0]
-
-
-def _jpeg_with_store() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (8, 8), "white").save(buf, "JPEG")
-    data = buf.getvalue()
-    app11 = b"JP\x00\x01\x00\x00\x00\x01" + b"\x00\x00\x00\x10jumb" + b"\x00\x00\x00\x08c2pa"
-    return data[:2] + b"\xff\xeb" + (len(app11) + 2).to_bytes(2, "big") + app11 + data[2:]
+# What the lists are is recorded once, in trust_lists.json, as tools/check_vendored.py
+# keeps the vendored readers in vendored.json; refreshing them changes that file only.
+MANIFEST = json.loads((TRUST / "trust_lists.json").read_text(encoding="utf-8"))
+FILES = {f["kind"]: f for f in MANIFEST["files"]}
+SIGNERS, TSAS = FILES["manifest"]["sha256"], FILES["tsa"]["sha256"]
+_AT = f"bundled, conformance-public {MANIFEST['commit'][:7]}"
+SIGNER_LIST, TSA_LIST = f"C2PA Trust List ({_AT})", f"C2PA TSA Trust List ({_AT})"
 
 
 def _pem(tmp_path, name, body=b"MIIB"):
@@ -58,37 +47,30 @@ def _shas(trust):
 
 # -- what GLEAPP carries ---------------------------------------------------------------
 
-def test_the_bundled_lists_are_the_pinned_files():
-    for name, (sha256, certificates) in PINNED.items():
-        data = (TRUST / name).read_bytes()
-        assert hashlib.sha256(data).hexdigest() == sha256, name
-        assert data.count(b"-----BEGIN CERTIFICATE-----") == certificates, name
-        assert data.count(b"-----END CERTIFICATE-----") == certificates, name
-        assert b"\r" not in data, name
+def test_the_bundled_lists_are_the_files_the_manifest_records():
+    for f in MANIFEST["files"]:
+        data = (TRUST / f["name"]).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == f["sha256"], f["name"]
+        assert data.count(b"-----BEGIN CERTIFICATE-----") == f["certificates"], f["name"]
+        assert data.count(b"-----END CERTIFICATE-----") == f["certificates"], f["name"]
+        assert b"\r" not in data, f["name"]
 
 
 def test_the_manifest_and_the_readme_record_where_they_came_from():
-    manifest = json.loads((TRUST / "trust_lists.json").read_text(encoding="utf-8"))
-    assert manifest["source"] == "https://github.com/c2pa-org/conformance-public"
-    assert manifest["licence"] == "CC-BY-4.0"
-    assert manifest["licence_file"] == "gleapp/trust/LICENSE-c2pa-trust-lists"
-    assert re.fullmatch(r"[0-9a-f]{40}", manifest["commit"])
+    assert MANIFEST["source"] == "https://github.com/c2pa-org/conformance-public"
+    assert MANIFEST["licence"] == "CC-BY-4.0"
+    assert (ROOT / MANIFEST["licence_file"]).is_file()
+    assert re.fullmatch(r"[0-9a-f]{40}", MANIFEST["commit"])
     readme = (TRUST / "README.md").read_text(encoding="utf-8")
-    assert manifest["commit"] in readme
-    files = {f["name"]: f for f in manifest["files"]}
-    assert set(files) == set(PINNED)
-    for name, (sha256, certificates) in PINNED.items():
-        assert files[name]["sha256"] == sha256
-        assert files[name]["certificates"] == certificates
-        assert re.fullmatch(r"[0-9a-f]{40}", files[name]["last_changed_in"])
-        assert sha256 in readme and files[name]["last_changed_in"] in readme
-    assert {f["kind"] for f in manifest["files"]} == {"manifest", "tsa"}
+    assert MANIFEST["commit"] in readme
+    assert set(FILES) == {"manifest", "tsa"}
+    for f in MANIFEST["files"]:
+        assert re.fullmatch(r"[0-9a-f]{40}", f["last_changed_in"])
+        assert f["sha256"] in readme and f["last_changed_in"] in readme
 
 
-def test_the_wheel_and_the_frozen_build_carry_them():
-    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert '"trust/*",' in pyproject
-    assert '"gleapp/trust/LICENSE-*",' in pyproject
+def test_the_frozen_build_carries_them():
+    # the wheel is held to every tracked file under gleapp/ by tools/check_wheel.py
     spec = (ROOT / "packaging" / "gleapp.spec").read_text(encoding="utf-8")
     assert '(str(PKG / "trust"), "gleapp/trust"),' in spec
 
@@ -97,8 +79,8 @@ def test_the_bundled_lists_load_and_say_where_they_came_from():
     trust = pv.trust_lists()
     assert _shas(trust) == [("manifest", SIGNERS), ("tsa", TSAS)]
     assert [a.label for a in trust.anchors] == [
-        "C2PA Trust List (bundled, conformance-public 43a0a6f)",
-        "C2PA TSA Trust List (bundled, conformance-public 43a0a6f)"]
+        SIGNER_LIST,
+        TSA_LIST]
 
 
 # -- what the examiner adds ------------------------------------------------------------
@@ -152,23 +134,24 @@ def test_a_file_is_read_with_the_lists_gleapp_carries_and_says_which(tmp_path, m
     the TSA list without the certificates the signer list already carries."""
     lib = install_fake_c2pa(monkeypatch, raises=lambda f: f.C2paError.ManifestNotFound("none"))
     p = tmp_path / "a.jpg"
-    p.write_bytes(_jpeg_with_store())
+    p.write_bytes(cf.jpeg(cf.app11_store()))
     rec = read_in_process(p)
     anchors = lib.settings[0]["trust"]["anchors"]
     assert [a["trust_kind"] for a in anchors] == ["manifest", "tsa"]
     assert hashlib.sha256(anchors[0]["trust_anchors"].encode()).hexdigest() == SIGNERS
     signers = _ders((TRUST / "C2PA-TRUST-LIST.pem").read_bytes())
     tsas = _ders((TRUST / "C2PA-TSA-TRUST-LIST.pem").read_bytes())
-    assert len(set(signers) & set(tsas)) == 16
+    shared = len(set(signers) & set(tsas))                # 16 at 43a0a6f
     passed = _ders(anchors[1]["trust_anchors"])
     assert passed == [c for c in tsas if c not in signers]
-    assert len(passed) == 6
+    assert len(passed) == FILES["tsa"]["certificates"] - shared
     assert rec["trust_lists"] == [
-        {"kind": "manifest", "label": "C2PA Trust List (bundled, conformance-public 43a0a6f)",
-         "sha256": SIGNERS, "certificates": 30, "passed": 30},
-        {"kind": "tsa", "label": "C2PA TSA Trust List (bundled, conformance-public 43a0a6f)",
-         "sha256": TSAS, "certificates": 22, "passed": 6,
-         "already_on": ["C2PA Trust List (bundled, conformance-public 43a0a6f)"]}]
+        {"kind": "manifest", "label": SIGNER_LIST,
+         "sha256": SIGNERS, "certificates": FILES["manifest"]["certificates"],
+         "passed": FILES["manifest"]["certificates"]},
+        {"kind": "tsa", "label": TSA_LIST,
+         "sha256": TSAS, "certificates": FILES["tsa"]["certificates"], "passed": len(passed),
+         "already_on": [SIGNER_LIST]}]
 
 
 def test_a_certificate_on_two_lists_reaches_the_reader_on_one(tmp_path, monkeypatch):
@@ -188,7 +171,7 @@ def test_a_certificate_on_two_lists_reaches_the_reader_on_one(tmp_path, monkeypa
     repeat = pv.Anchor("manifest", two, "examiner repeat")
     lab_tsa = pv.Anchor("tsa", three + four, "examiner TSA anchors")
     p = tmp_path / "a.jpg"
-    p.write_bytes(_jpeg_with_store())
+    p.write_bytes(cf.jpeg(cf.app11_store()))
     rec = read_in_process(p, trust=pv.TrustLists((signers, tsas, lab, repeat, lab_tsa)))
     sent = {a["trust_uri"]: _ders(a["trust_anchors"])
             for a in lib.settings[0]["trust"]["anchors"]}
@@ -216,14 +199,14 @@ def test_a_trusted_record_names_the_list_the_signer_chained_to(tmp_path, monkeyp
                  "trustListUri": trust.anchors[0].uri}}
     install_fake_c2pa(monkeypatch, store=store)
     p = tmp_path / "a.jpg"
-    p.write_bytes(_jpeg_with_store())
+    p.write_bytes(cf.jpeg(cf.app11_store()))
     rec = read_in_process(p, trust=trust)
     assert rec["state"] == "trusted"
-    assert rec["trusted_by"] == "C2PA Trust List (bundled, conformance-public 43a0a6f)"
+    assert rec["trusted_by"] == SIGNER_LIST
     assert rec["trust_list_sha256"] == SIGNERS
     assert [(d["label"], d["sha256"]) for d in rec["trust_lists"]] == [
-        ("C2PA Trust List (bundled, conformance-public 43a0a6f)", SIGNERS),
-        ("C2PA TSA Trust List (bundled, conformance-public 43a0a6f)", TSAS)]
+        (SIGNER_LIST, SIGNERS),
+        (TSA_LIST, TSAS)]
 
 
 def test_the_real_reader_accepts_the_bundled_lists():
