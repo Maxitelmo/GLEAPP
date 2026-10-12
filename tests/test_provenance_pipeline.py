@@ -203,9 +203,8 @@ def test_the_pass_reads_what_was_never_read_and_then_nothing(tmp_path, monkeypat
         assert counts["read"] == 3
         assert counts["states"] == {"absent": 2, "not_checked": 1}
         assert {r["c2pa_state"] for r in _rows(case).values()} == {"absent", "not_checked"}
-        # not_checked is read again, since its reason (no library) may have gone
-        again = provenance_pass(case)
-        assert again["read"] == 1 and again["states"] == {"not_checked": 1}
+        # with no library to read it, nothing not checked can change
+        assert provenance_pass(case)["read"] == 0
         assert provenance_pass(case, retry=False)["read"] == 0
         assert provenance_pass(case, force=True)["read"] == 3
         entries = [r for r in case.db.conn.execute(
@@ -214,6 +213,54 @@ def test_the_pass_reads_what_was_never_read_and_then_nothing(tmp_path, monkeypat
         detail = json.loads(entries[0]["detail"])
         assert detail["states"] == {"absent": 2, "not_checked": 1}
         assert "trust_lists" in detail and "library" in detail
+    finally:
+        case.close()
+
+
+def test_a_pass_reads_again_only_what_a_second_read_can_change(tmp_path, monkeypatch):
+    """Not checked is read again only with the library there to read it, and never for a
+    reason a second read gives again: a format the reader does not support, or a manifest
+    kept at a remote address. A BMP was read on every pass, and the gallery offered
+    "Read again" for it for good. --force still reads everything."""
+    from gleapp.pipeline import RETRY_ROWS  # pylint: disable=import-outside-toplevel
+    _no_library(monkeypatch)
+    ev = tmp_path / "evidence"
+    ev.mkdir()
+    reasons = {"library.jpg": pv.NOT_CHECKED_LIBRARY, "stopped.jpg": pv.READER_STOPPED,
+               "unreadable.jpg": pv.UNREADABLE + ": gone",
+               "unsupported.bmp": pv.UNSUPPORTED, "remote.jpg": pv.REMOTE_NOT_FETCHED}
+    for name in [*reasons, "plain.jpg"]:
+        (ev / name).write_bytes(b"not read here")
+    case = open_case(tmp_path / "case", create=True, examiner="t")
+    try:
+        ingest_sources(case, [Source(name="ev", path=str(ev))])
+        records = {}
+        for r in case.db.iter_files():
+            name = Path(r["path"]).name
+            rec = ({"state": "not_checked", "state_reason": reasons[name]}
+                   if name in reasons else {"state": "absent"})
+            records[name] = rec
+            case.db.update_file(r["id"], kind="image", **pv.columns(rec))
+        case.db.commit()
+        assert case.db.conn.execute(
+            f"SELECT COUNT(*) FROM files WHERE {RETRY_ROWS}").fetchone()[0] == 3
+        seen: list[str] = []
+
+        def read_batch(paths, *, trust):
+            del trust
+            seen.extend(sorted(Path(p).name for p in paths))
+            return {p: dict(records[Path(p).name]) for p in paths}
+
+        monkeypatch.setattr(pv, "read_batch", read_batch)
+        assert provenance_pass(case)["read"] == 0 and not seen          # no library
+        monkeypatch.setattr(pv, "library_available", lambda: (True, None))
+        provenance_pass(case)
+        assert seen == ["library.jpg", "stopped.jpg", "unreadable.jpg"]
+        seen.clear()
+        provenance_pass(case, retry=False)
+        assert not seen
+        provenance_pass(case, force=True)
+        assert len(seen) == 6
     finally:
         case.close()
 
@@ -382,5 +429,6 @@ def test_the_gallery_runs_the_pass_as_a_job(tmp_path, monkeypatch):
     assert job["stats"]["states"] == {"absent": 2, "not_checked": 1}
     after = cl.get("/api/context").get_json()["provenance"]
     assert after["unread"] == 0
+    assert after["retry"] == 1           # no library: a second read could change it
     assert after["states"] == {"absent": 2, "malformed": 0, "invalid": 0,
                                "valid_untrusted": 0, "trusted": 0, "not_checked": 1}

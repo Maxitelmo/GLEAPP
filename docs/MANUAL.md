@@ -2068,8 +2068,10 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
   from the bytes, and those holding one go to the reader.
 - **Older cases** are not read on their own. Open the sidebar's **Content
   Credentials** section and click **Read Content Credentials**, or run
-  `gleapp -c CASE provenance` (`--force` reads everything again). Files recorded as
-  Not checked are read again by default.
+  `gleapp -c CASE provenance` (`--force` reads everything again). With the c2pa
+  library installed, files recorded as Not checked are read again by default, except
+  where a second read gives the same answer: a format the reader does not support, and
+  a manifest kept at a remote address. `--no-retry` leaves every Not checked file alone.
 
 ### Where they show
 

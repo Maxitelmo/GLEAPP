@@ -1135,6 +1135,10 @@ ABSENT_BY_READER = "the c2pa reader found no manifest store"
 READER_STOPPED = "the c2pa reader stopped on this file"
 UNSUPPORTED = "the c2pa reader does not support this format"
 UNREADABLE = "the c2pa reader could not read the file"
+# The reasons a second read with the same library gives again: a format the reader does
+# not support, and a manifest kept at a remote address, which is never fetched. A pass
+# leaves those not_checked alone unless forced; every other reason can change.
+SETTLED_REASONS = (UNSUPPORTED, REMOTE_NOT_FETCHED)
 
 
 def prescan(path: str | Path) -> tuple[dict, dict | None]:

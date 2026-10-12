@@ -33,7 +33,7 @@ from ..case import open_case, parse_source_spec
 from ..db import FILE_PATH_SQL, ORIGINS, TOOL_ACTOR
 from ..facematch import find_matching_faces
 from ..ingest import DOCUMENT_EXTS, is_exoplayer_cache_name
-from ..pipeline import PROVENANCE_ROWS, ingest_sources, process
+from ..pipeline import PROVENANCE_ROWS, RETRY_ROWS, ingest_sources, process
 from ..similar import find_similar
 
 AUTO_BACKUP_POLL = 60.0   # seconds between the snapshot loop's checks
@@ -2016,10 +2016,12 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             f"COALESCE(SUM({_arch}), 0) arch_total, "
             f"SUM(CASE WHEN {_arch} AND id IN (SELECT container_id FROM files "
             "WHERE container_id IS NOT NULL) THEN 1 ELSE 0 END) arch_expanded, "
-            # Content Credentials: each state, and the pictures and videos not read
+            # Content Credentials: each state, the pictures and videos not read, and
+            # the not checked a second read can change
             + ", ".join(f"COALESCE(SUM(c2pa_state = '{st}'), 0) c2pa_{st}"
                         for st in provenance.STATES) + ", "
-            f"COALESCE(SUM(c2pa_state IS NULL AND {PROVENANCE_ROWS}), 0) c2pa_unread "
+            f"COALESCE(SUM(c2pa_state IS NULL AND {PROVENANCE_ROWS}), 0) c2pa_unread, "
+            f"COALESCE(SUM({RETRY_ROWS}), 0) c2pa_retry "
             "FROM files").fetchone()
         scr = {"n": one["n"], "wf": one["wf"], "ws": one["ws"]}
         n_err, n_retry = one["n_err"], one["n_retry"]
@@ -2044,7 +2046,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             "FROM files WHERE container_id IS NOT NULL GROUP BY container_id) k "
             "ON k.container_id = files.id WHERE files.kind = 'archive' LIMIT -1)").fetchone()
         a_items, d_items = cont["a_items"], cont["d_items"]
-        c2pa = {"unread": one["c2pa_unread"],
+        c2pa = {"unread": one["c2pa_unread"], "retry": one["c2pa_retry"],
                 "states": {st: one[f"c2pa_{st}"] for st in provenance.STATES}}
         return {
             "c2pa": c2pa,

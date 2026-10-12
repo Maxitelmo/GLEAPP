@@ -455,6 +455,12 @@ def screen_pass(case: Case, *, workers: int = 4, progress=None) -> int:
 PROVENANCE_ROWS = (
     "kind IN ('image', 'video') AND "
     f"(error IS NULL OR error NOT LIKE '{archive.PLACEHOLDER_ERROR}%')")
+# The not_checked rows a second read can change: every reason but the ones it gives
+# again (provenance.SETTLED_REASONS), matched on the record as provenance.columns writes
+# it. The gallery counts them for its button.
+RETRY_ROWS = "c2pa_state = 'not_checked'" + "".join(
+    f" AND instr(c2pa_info, '{json.dumps({'state_reason': r})[1:-1]}') = 0"
+    for r in provenance.SETTLED_REASONS)
 _PROVENANCE_BATCH = 25     # files per reader process and per commit
 
 
@@ -464,8 +470,9 @@ def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = T
     """Read Content Credentials and the IPTC source type for pictures and videos.
 
     ``ids`` limits it to those rows (processing hands over the files it found a
-    manifest store in). Otherwise it reads every row never read (NULL), the
-    not_checked ones too unless ``retry`` is off, or every row with ``force``.
+    manifest store in). Otherwise it reads every row never read (NULL), and unless
+    ``retry`` is off the not_checked ones a second read can change (``RETRY_ROWS``),
+    when the c2pa library is there to read them; or every row with ``force``.
     Bytes come from where processing takes them (``archive.local_copies``: the file
     itself, or a copy under the case folder that is removed after the batch), and
     the source is never written to. ``trust`` defaults to the lists GLEAPP carries.
@@ -478,8 +485,10 @@ def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = T
             rows += case.db.iter_files(
                 f"id IN ({','.join('?' * len(chunk))})", chunk)
     else:
+        # without the library nothing not checked can change, so it is not read again
+        retry = retry and provenance.library_available()[0]
         unread = "1" if force else (
-            "(c2pa_state IS NULL" + (" OR c2pa_state = 'not_checked')" if retry else ")"))
+            f"(c2pa_state IS NULL OR ({RETRY_ROWS}))" if retry else "c2pa_state IS NULL")
         rows = case.db.iter_files(f"{PROVENANCE_ROWS} AND {unread}")
     recs = archive.source_records(case)
     total, done = len(rows), 0

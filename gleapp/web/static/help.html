@@ -598,7 +598,7 @@ Processing history.</p>
   <tr><th>Control</th><th>What it does</th></tr>
   <tr><td><strong>State</strong></td><td>Has Content Credentials (malformed, invalid, or valid with the signer on a trust list or not), one state, or <strong>Not read yet</strong>. See <a href="#c2pa">§20</a>.</td></tr>
   <tr><td><strong>Declared source type</strong></td><td>The class of the source type the file's manifest declares, valid or not. An XMP declaration outside any manifest is not counted here.</td></tr>
-  <tr><td><strong>Read Content Credentials</strong></td><td>Reads the pictures and videos not read yet, and the ones not checked, on a case processed before this existed.</td></tr>
+  <tr><td><strong>Read Content Credentials</strong></td><td>Reads the pictures and videos not read yet, on a case processed before this existed, and, with the c2pa library installed, the ones not checked for a reason a second read can change (not a format the reader does not support, nor a remote manifest).</td></tr>
 </table>
 
 <h3>Duplicates</h3>

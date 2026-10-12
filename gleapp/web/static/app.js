@@ -3111,11 +3111,13 @@ function updateC2paInfo(pv) {
     + `${withCr.toLocaleString()}; not checked: ${(st.not_checked || 0).toLocaleString()}.`);
   if (!pv.library) lines.push("The c2pa library is not installed, so signatures are not checked.");
   info.textContent = lines.join(" ");
-  // reading the not checked again can only change something with the library there
-  btn.style.display = pv.unread || (st.not_checked && pv.library) ? "" : "none";
+  // what the pass reads again: the not checked a second read can change (not a format
+  // the reader does not support, nor a remote manifest), and only with the library there
+  const again = pv.library ? (pv.retry || 0) : 0;
+  btn.style.display = pv.unread || again ? "" : "none";
   btn.textContent = pv.unread
-    ? `Read Content Credentials (${pv.unread.toLocaleString()} files)`
-    : `Read again the ${(st.not_checked || 0).toLocaleString()} not checked`;
+    ? `Read Content Credentials (${(pv.unread + again).toLocaleString()} files)`
+    : `Read again the ${again.toLocaleString()} not checked`;
 }
 // The sidebar is narrow, so a long job message is cut off with an ellipsis; hovering
 // the bar shows all of it. Several jobs write the text, so the tooltip follows it.
