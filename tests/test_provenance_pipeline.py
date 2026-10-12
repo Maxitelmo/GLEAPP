@@ -265,6 +265,31 @@ def test_a_pass_reads_again_only_what_a_second_read_can_change(tmp_path, monkeyp
         case.close()
 
 
+def test_the_context_counts_credentials_from_the_index(tmp_path, monkeypatch):
+    """The sidebar's Content Credentials counts are answered from the c2pa_state index.
+    As sums in the context's pass over the table they read every row for them: 85 ms
+    more on a case of 150,000 rows, against 27 ms on the index. The plan is asked of the
+    statements the context really runs."""
+    from gleapp.web.app import create_app  # pylint: disable=import-outside-toplevel
+    case = _old_case(tmp_path, monkeypatch)
+    root = case.root
+    case.close()
+    app = create_app(str(root))
+    conn = app.config["STATE"]["case"].db.conn
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    try:
+        assert app.test_client().get("/api/context").status_code == 200
+    finally:
+        conn.set_trace_callback(None)
+    reading = [s for s in seen if "c2pa_state" in s]
+    assert len(reading) == 3, reading
+    for sql in reading:
+        plan = [r[3] for r in conn.execute("EXPLAIN QUERY PLAN " + sql)]
+        assert any("idx_files_c2pa_state" in step for step in plan), (sql, plan)
+        assert not any(step.startswith("SCAN files") for step in plan), (sql, plan)
+
+
 def test_the_pass_reads_a_zip_in_place_and_never_writes_to_it(tmp_path, monkeypatch):
     _no_library(monkeypatch)
     z = tmp_path / "extraction.zip"

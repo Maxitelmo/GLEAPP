@@ -1207,6 +1207,16 @@ stays whatever trust is found.
 and does not start reading an older case: on an E01 read in place that would pull every
 file out again. `gleapp provenance` and the gallery's button do it when asked.
 
+**The sidebar's Content Credentials counts come from the `c2pa_state` index**, in three
+statements of their own, not as sums in the context's pass over the table. Measured
+2026-10-12 on a synthetic case of 150,000 pictures (2,000 with a record, 21,000 not read;
+Python 3.12, Linux): the sums added 85 ms to that pass, since every row was read for
+them, and the three statements take 27 ms, 7 ms of it the states and 20 ms the rows not
+read. `test_the_context_counts_credentials_from_the_index` asks SQLite for the plan of
+the statements the context really runs. The byte walk processing adds per file was
+0.02 to 0.24 ms against 29 to 230 ms for the hashes of the same files (a 14 MB JPEG,
+a 9 MB PNG, a 71 MB MP4).
+
 **A source-type class is worked out from the URI, so moving a term raises
 `provenance.DST_VOCABULARY`.** A record keeps the digital source type URI it was declared
 with and no class: every surface works the class out where it shows it. The one class

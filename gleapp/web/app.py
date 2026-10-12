@@ -2015,13 +2015,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             f"COALESCE(SUM({_retryable}), 0) n_retry, "
             f"COALESCE(SUM({_arch}), 0) arch_total, "
             f"SUM(CASE WHEN {_arch} AND id IN (SELECT container_id FROM files "
-            "WHERE container_id IS NOT NULL) THEN 1 ELSE 0 END) arch_expanded, "
-            # Content Credentials: each state, the pictures and videos not read, and
-            # the not checked a second read can change
-            + ", ".join(f"COALESCE(SUM(c2pa_state = '{st}'), 0) c2pa_{st}"
-                        for st in provenance.STATES) + ", "
-            f"COALESCE(SUM(c2pa_state IS NULL AND {PROVENANCE_ROWS}), 0) c2pa_unread, "
-            f"COALESCE(SUM({RETRY_ROWS}), 0) c2pa_retry "
+            "WHERE container_id IS NOT NULL) THEN 1 ELSE 0 END) arch_expanded "
             "FROM files").fetchone()
         scr = {"n": one["n"], "wf": one["wf"], "ws": one["ws"]}
         n_err, n_retry = one["n_err"], one["n_retry"]
@@ -2046,8 +2040,22 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             "FROM files WHERE container_id IS NOT NULL GROUP BY container_id) k "
             "ON k.container_id = files.id WHERE files.kind = 'archive' LIMIT -1)").fetchone()
         a_items, d_items = cont["a_items"], cont["d_items"]
-        c2pa = {"unread": one["c2pa_unread"], "retry": one["c2pa_retry"],
-                "states": {st: one[f"c2pa_{st}"] for st in provenance.STATES}}
+        # Content Credentials: each state, the pictures and videos not read, and the not
+        # checked a second read can change. Statements of their own, answered from the
+        # c2pa_state index: as sums in the pass above they read every row for them, 85 ms
+        # more on 150,000 rows, against 27 ms here with 21,000 of them not read.
+        states = dict.fromkeys(provenance.STATES, 0)
+        for r in case.db.conn.execute(
+                "SELECT c2pa_state, COUNT(*) n FROM files WHERE c2pa_state IS NOT NULL "
+                "GROUP BY c2pa_state"):
+            if r["c2pa_state"] in states:
+                states[r["c2pa_state"]] = r["n"]
+        c2pa = {"states": states,
+                "unread": case.db.conn.execute(
+                    f"SELECT COUNT(*) FROM files WHERE c2pa_state IS NULL AND {PROVENANCE_ROWS}"
+                ).fetchone()[0],
+                "retry": case.db.conn.execute(
+                    f"SELECT COUNT(*) FROM files WHERE {RETRY_ROWS}").fetchone()[0]}
         return {
             "c2pa": c2pa,
             "srcs": srcs, "clusters": clusters, "scr": scr, "n_err": n_err,
