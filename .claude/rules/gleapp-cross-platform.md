@@ -1173,7 +1173,11 @@ that chains only to an anchor loaded as a TSA; GLEAPP records that as valid_untr
 **The native library never loads in the GLEAPP process.** The parent decides from the bytes
 and checks only that the package is installed; a file holding a store is read by
 `gleapp/_c2paworker.py`, a batch at a time, the paths and anchors on stdin. A batch that
-stops is split until the file it stopped on is alone. `NotSupported`, `Io` and
+stops is split until the file it stopped on is alone. A batch whose time runs out keeps
+what it answered, since the worker answers in order and flushes each line, and the file
+it was on is read again alone: until 2026-10-12 the answers were dropped and the batch
+halved, a 600 s timeout at every halving, and a fake reader that hung on the 20th of 25
+files was started 11 times and timed out 6. `NotSupported`, `Io` and
 `FileNotFound` from the reader say nothing about a manifest and are not_checked, and so is
 a remote manifest, which c2pa-python 0.38.0 raises as a plain `C2paError("Remote: ...")`
 (its `RemoteManifest` subclass is for another prefix); every other `C2paError` is

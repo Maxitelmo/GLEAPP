@@ -1261,16 +1261,30 @@ def _run_reader(requests: list[dict], settings: dict, *, timeout: int, depth: in
     """{path: outcome} from the reader process. The paths and the settings go on its
     stdin, never on its command line or in a file. A child that stops before
     answering for every file is run again on halves of what it left, so the file it
-    stopped on ends alone and is the only one recorded as stopping it."""
+    stopped on ends alone and is the only one recorded as stopping it.
+
+    A child whose time runs out keeps what it answered. It answers in order and
+    flushes each answer, so its time ran out on the first file it did not answer:
+    that file is read again alone, with the whole time to itself, and the files
+    after it in a batch of their own. A file that only hangs then costs two
+    timeouts, not one per halving, and a batch that was merely slow costs none."""
     if not requests:
         return {}
     payload = json.dumps({"settings": settings,
                           "items": [{"path": r["path"], "mime": r["mime"]} for r in requests]})
+    timed_out = False
     try:
         done = subprocess.run(worker_command(), input=payload, capture_output=True,
                               text=True, encoding="utf-8", timeout=timeout, check=False)
         lines = (done.stdout or "").splitlines()
-    except (subprocess.TimeoutExpired, OSError):
+    except subprocess.TimeoutExpired as exc:
+        timed_out = True
+        # the output so far: bytes on POSIX, text where Windows read it after the kill
+        partial = exc.stdout or ""
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf-8", "replace")
+        lines = partial.splitlines()
+    except OSError:
         lines = []
     wanted = {r["path"] for r in requests}
     out: dict[str, dict] = {}
@@ -1286,6 +1300,9 @@ def _run_reader(requests: list[dict], settings: dict, *, timeout: int, depth: in
         if len(left) == 1 or depth >= 12:
             for r in left:
                 out[r["path"]] = {"kind": "crashed"}
+        elif timed_out:
+            out.update(_run_reader(left[:1], settings, timeout=timeout, depth=depth + 1))
+            out.update(_run_reader(left[1:], settings, timeout=timeout, depth=depth))
         else:
             mid = len(left) // 2
             for half in (left[:mid], left[mid:]):

@@ -2060,7 +2060,10 @@ The release builds do not carry it (its native library comes without the third-p
 notices a binary distribution needs), so in them a file holding credentials is **Not
 checked: the c2pa library is not installed**. Absence is still recorded without it, since that comes
 from GLEAPP's own reading of the file. The native library runs in a child process of
-its own, a batch at a time, so a fault in it costs one file and never the run.
+its own, a batch at a time, so a fault in it costs one file and never the run. A
+batch that takes more than ten minutes is stopped, and the file it was on is read
+again alone; only a file that takes the ten minutes by itself is recorded as
+**Not checked: the c2pa reader stopped on this file**.
 
 ### Reading them
 

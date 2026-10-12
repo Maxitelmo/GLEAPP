@@ -357,6 +357,56 @@ def test_a_reader_that_dies_costs_the_file_it_died_on(tmp_path, monkeypatch):
     assert poisoned["state_reason"] == pv.READER_STOPPED
 
 
+def _slow_reader(tmp_path, monkeypatch, *, hang: str = "", pause: float = 0.0) -> list:
+    """A reader that answers in order, flushing each answer as the real one does,
+    waits ``pause`` seconds on every file and for good on any file named ``hang``.
+    Returns the list each start of it is recorded in."""
+    fake = tmp_path / "slow_worker.py"
+    fake.write_text(
+        "import json, sys, time\n"
+        "req = json.load(sys.stdin)\n"
+        "for i in req['items']:\n"
+        f"    time.sleep({pause})\n"
+        f"    if {hang!r} and i['path'] == {hang!r}:\n"
+        "        time.sleep(600)\n"
+        "    print(json.dumps({'path': i['path'], 'outcome': {'kind': 'absent'}}), flush=True)\n",
+        encoding="utf-8")
+    starts: list = []
+
+    def command():
+        starts.append(1)
+        return [sys.executable, str(fake)]
+
+    monkeypatch.setattr(pv, "worker_command", command)
+    return starts
+
+
+def test_a_file_the_reader_hangs_on_costs_two_timeouts(tmp_path, monkeypatch):
+    """What the reader answered before its time ran out is kept, and the file it was on
+    is read again alone: if its time runs out again, that file alone is recorded as
+    stopping the reader. Before, the answers were dropped and the batch was halved, a
+    timeout at every halving (an hour for one file in a batch of 25 at 600 s each)."""
+    starts = _slow_reader(tmp_path, monkeypatch, hang="hang")
+    names = ["a", "b", "c", "hang", "d", "e"]
+    out = pv._run_reader(  # pylint: disable=protected-access
+        [{"path": n, "mime": ""} for n in names], {}, timeout=3)
+    assert {p: o["kind"] for p, o in out.items()} == {
+        "a": "absent", "b": "absent", "c": "absent", "hang": "crashed",
+        "d": "absent", "e": "absent"}
+    assert len(starts) == 3          # the batch, the file alone, the files after it
+
+
+def test_a_batch_that_is_only_slow_records_no_file_as_stopping_the_reader(
+        tmp_path, monkeypatch):
+    """Each file takes a second and the batch more than its time: the file the time ran
+    out on is read again alone, and it finishes."""
+    _slow_reader(tmp_path, monkeypatch, pause=1.0)
+    names = ["a", "b", "c", "d", "e"]
+    out = pv._run_reader(  # pylint: disable=protected-access
+        [{"path": n, "mime": ""} for n in names], {}, timeout=3)
+    assert {o["kind"] for o in out.values()} == {"absent"} and len(out) == 5
+
+
 def test_the_reader_process_is_handed_no_path_on_its_command_line(tmp_path, monkeypatch):
     """The paths and the trust anchors go to the child on stdin, so nothing about the
     evidence sits in a temporary file or in the process list."""
