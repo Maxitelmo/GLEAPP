@@ -156,7 +156,7 @@ def test_trusted_only_through_the_tsa_list_is_not_trusted():
 
 def test_a_changed_byte_is_invalid_and_the_declaration_is_kept_but_marked():
     """C2PA 2.2 §15.3: what a manifest that is not valid declares is not attributable
-    to its signer. It is recorded, and marked as not backed by a valid signature."""
+    to its signer. It is recorded, and marked as not backed by credentials that validate."""
     results = cf.results(failure=["signingCredential.untrusted", "assertion.dataHash.mismatch"])
     rec = pv.parse_manifest_store(cf.manifest_store(cf.manifest(ACTIVE, "trainedAlgorithmicMedia"),
                                          "Invalid", results))

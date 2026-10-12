@@ -54,7 +54,7 @@ def test_the_code_never_names_the_distribution_to_importlib_metadata():
 
 def test_ci_runs_the_suite_with_the_library_and_without_it():
     """The Linux and Windows jobs install the extra, so the signed-fixture tests run;
-    the runtime-contract matrix (3.10 to 3.14) does not, so the 'library unavailable'
+    the runtime-contract matrix (3.10 to 3.14) does not, so the 'not installed'
     path runs as an examiner without it would meet it."""
     workflows = ROOT / ".github" / "workflows"
     for name in ("test_cases.yml", "windows_smoke.yml"):

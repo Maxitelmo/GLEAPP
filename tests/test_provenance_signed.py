@@ -106,7 +106,7 @@ def test_a_changed_byte_breaks_the_hard_binding(tmp_path, chain):
     assert rec["state"] == "invalid"
     assert pv.hard_binding_mismatch(rec) is True
     assert "assertion.dataHash.mismatch" in [c["code"] for c in rec["codes"]["failure"]]
-    # what it declared is still recorded, marked as not backed by a valid signature
+    # what it declared is still recorded, marked as not backed by credentials that validate
     assert pv.dst_class(rec) == "generative_ai"
     assert rec["state"] not in pv.VALID_STATES
 
