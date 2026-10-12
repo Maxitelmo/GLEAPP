@@ -1,17 +1,13 @@
 """A case reads the same declarations when the source-type vocabulary changes.
 
-What a file declares is a URI, and every record keeps it (``active_dst``, each
-ingredient's ``dst``, ``xmp_dst.uri``). The class beside it is worked out from that
-URI, so when a build moves a term to another class:
+What a file declares is a URI, and a record keeps it and no class (``active_dst``,
+each ingredient's ``dst``, ``xmp_dst.uri``): every surface works the class out where
+it shows it. The one class kept is ``files.c2pa_dst_class``, which the filter and the
+list read, and it is worked out again once, when the case is opened, for each
+``provenance.DST_VOCABULARY``; ``files.c2pa_info`` is never rewritten.
 
-* ``files.c2pa_info`` is never rewritten: it stays the record as it was read;
-* ``provenance.load`` works each class out again from its URI, so every surface that
-  reads a record (details pane, reports, exports) shows this build's class;
-* ``files.c2pa_dst_class``, which the filter and the list read, is worked out again
-  once, when the case is opened, for each ``provenance.DST_VOCABULARY``.
-
-The stale classes here are written by hand: they stand for what an older build
-decided under an older vocabulary.
+The stale column here is written by hand: it stands for what an older build decided
+under an older vocabulary.
 """
 
 import json
@@ -27,58 +23,15 @@ from gleapp.pipeline import ingest_sources
 # pylint: disable=redefined-outer-name
 
 DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
-GENERATED = DST + "trainedAlgorithmicMedia"
-CAPTURED = DST + "digitalCapture"
-
-
-def _stale_record() -> dict:
-    """A record whose classes all disagree with their URIs, ingredients nested."""
-    return {
-        "state": "valid_untrusted", "codes": {}, "signer": None,
-        "active_dst": GENERATED, "dst_class": "capture",
-        "ingredients": [{"title": "a.jpg", "dst": CAPTURED, "dst_class": "generative_ai",
-                         "state": "valid_untrusted", "signer": None,
-                         "ingredients": [{"title": "b.jpg", "dst": GENERATED,
-                                          "dst_class": "screen", "state": "absent",
-                                          "signer": None}]},
-                        {"title": "c.jpg", "dst": None, "dst_class": "capture",
-                         "state": "absent", "signer": None}],
-        "xmp_dst": {"uri": CAPTURED, "class": "generative_ai", "label": pv.UNSIGNED},
-    }
-
-
-def test_load_works_each_class_out_again_from_its_uri():
-    stored = json.dumps(_stale_record(), sort_keys=True)
-    rec = pv.load(stored)
-    assert rec["dst_class"] == "generative_ai"
-    assert rec["ingredients"][0]["dst_class"] == "capture"
-    assert rec["ingredients"][0]["ingredients"][0]["dst_class"] == "generative_ai"
-    assert rec["ingredients"][1]["dst_class"] == "none"
-    assert rec["xmp_dst"]["class"] == "capture"
-    # everything else is as stored
-    stale = json.loads(stored)
-    assert rec["active_dst"] == stale["active_dst"]
-    assert rec["xmp_dst"]["uri"] == stale["xmp_dst"]["uri"]
-    assert rec["state"] == stale["state"]
-
-
-def test_what_a_surface_shows_follows_the_uri():
-    text = pv.describe_text(pv.load(json.dumps(_stale_record(), sort_keys=True)))
-    assert "trainedAlgorithmicMedia (Generative AI)" in text
-    assert "a.jpg: digitalCapture (Capture)" in text
-    assert "digitalCapture (Capture), unsigned declaration" in text
-    # the export carries the URI the XMP declares, not a class of GLEAPP's
-    assert pv.xmp_text(pv.load(json.dumps(_stale_record()))) == (
-        DST + "digitalCapture (unsigned declaration)")
-
-
-def test_a_record_without_classes_loads_as_it_was():
-    for rec in ({"state": "not_checked"}, {"state": "absent", "xmp_dst": None}):
-        assert pv.load(json.dumps(rec)) == rec
+RECORD = {"state": "valid_untrusted", "codes": {}, "signer": None,
+          "active_manifest": "urn:c2pa:00000000-0000-4000-8000-00000000000a",
+          "active_dst": DST + "trainedAlgorithmicMedia", "ingredients": [], "xmp_dst": None}
 
 
 @pytest.fixture
 def case_root(tmp_path):
+    """A case whose generated.jpg holds RECORD, with the class an older build wrote
+    beside it under another vocabulary."""
     ev = tmp_path / "evidence"
     ev.mkdir()
     for i, name in enumerate(("generated.jpg", "plain.jpg")):
@@ -86,12 +39,9 @@ def case_root(tmp_path):
     c = open_case(tmp_path / "case", create=True, examiner="t")
     ingest_sources(c, [Source(name="ev", path=str(ev))])
     ids = {r["rel_path"]: r["id"] for r in c.db.iter_files()}
-    stale = _stale_record()
-    c.db.update_file(ids["generated.jpg"], **pv.columns(stale))
-    absent = {"state": "absent", "active_dst": None, "dst_class": "none", "xmp_dst": None}
-    c.db.update_file(ids["plain.jpg"], **pv.columns(absent))
-    c.db.commit()
-    # as an older build left it: a class decided under another vocabulary
+    stale = {**pv.columns(RECORD), "c2pa_dst_class": "capture"}
+    c.db.update_file(ids["generated.jpg"], **stale)
+    c.db.update_file(ids["plain.jpg"], **pv.columns({"state": "absent", "xmp_dst": None}))
     c.db.conn.execute("DELETE FROM meta WHERE key = 'c2pa_dst_vocabulary'")
     c.db.commit()
     c.close()
@@ -127,12 +77,11 @@ def _set_column(root, file_id, value):
 
 def test_opening_a_case_works_the_column_out_again(case_root):
     root, ids = case_root
-    stored = json.dumps(_stale_record(), sort_keys=True)
     cls, info, vocabulary = _column(root, ids["generated.jpg"])
     assert cls == "generative_ai"
-    assert info == stored                    # the record is never rewritten
+    assert json.loads(info) == RECORD             # the record is never rewritten
     assert vocabulary == str(pv.DST_VOCABULARY)
-    assert _column(root, ids["plain.jpg"])[0] == "none"
+    assert _column(root, ids["plain.jpg"])[0] is None
 
 
 def test_the_column_is_worked_out_once_per_vocabulary(case_root, monkeypatch):

@@ -226,10 +226,10 @@ def test_a_generated_image_signed_by_an_unlisted_signer_is_valid_untrusted():
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "trainedAlgorithmicMedia")))
     assert rec["state"] == "valid_untrusted"
     assert rec["active_dst"] == DST + "trainedAlgorithmicMedia"
-    assert rec["dst_class"] == "generative_ai"
+    assert pv.dst_class(rec) == "generative_ai"
     assert rec["dst_action"] == "c2pa.created"
-    assert rec["dst_signed_valid"] is True
-    assert rec["hard_binding_mismatch"] is False
+    assert rec["state"] in pv.VALID_STATES
+    assert pv.hard_binding_mismatch(rec) is False
     assert rec["signer"] == {"issuer": "Synthetic Test Org", "common_name": "Synthetic Signer",
                              "cert_serial_number": "2"}
     assert pv.signer_text(rec["signer"]) == "Synthetic Signer (Synthetic Test Org)"
@@ -244,7 +244,7 @@ def test_a_signer_on_the_trust_list_is_trusted():
     results = _results(success=["signingCredential.trusted"], trust_uri="gleapp:signer")
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "digitalCapture"), "Trusted", results))
     assert rec["state"] == "trusted"
-    assert rec["dst_class"] == "capture"
+    assert pv.dst_class(rec) == "capture"
     assert rec["trust_list_uri"] == "gleapp:signer"
 
 
@@ -265,17 +265,17 @@ def test_a_changed_byte_is_invalid_and_the_declaration_is_kept_but_marked():
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "trainedAlgorithmicMedia"),
                                          "Invalid", results))
     assert rec["state"] == "invalid"
-    assert rec["hard_binding_mismatch"] is True
+    assert pv.hard_binding_mismatch(rec) is True
     assert rec["active_dst"] == DST + "trainedAlgorithmicMedia"
-    assert rec["dst_class"] == "generative_ai"
-    assert rec["dst_signed_valid"] is False
+    assert pv.dst_class(rec) == "generative_ai"
+    assert rec["state"] not in pv.VALID_STATES
 
 
 @pytest.mark.parametrize("code", sorted(pv.HARD_BINDING_MISMATCH))
 def test_every_hard_binding_mismatch_is_flagged(code):
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "digitalCapture"), "Invalid",
                                          _results(failure=[code])))
-    assert rec["hard_binding_mismatch"] is True
+    assert pv.hard_binding_mismatch(rec) is True
     assert rec["state"] == "invalid"
 
 
@@ -283,7 +283,7 @@ def test_an_invalid_store_with_a_well_formedness_failure_is_malformed():
     results = _results(failure=["claim.malformed"])
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "digitalCapture"), "Invalid", results))
     assert rec["state"] == "malformed"
-    assert rec["dst_signed_valid"] is False
+    assert rec["state"] not in pv.VALID_STATES
 
 
 def test_a_store_without_its_active_manifest_is_malformed():
@@ -306,7 +306,7 @@ def test_cawg_identity_results_do_not_decide_the_state():
 def test_a_composite_synthetic_declaration_is_an_ai_composite():
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "compositeSynthetic",
                                                    action="c2pa.edited")))
-    assert rec["dst_class"] == "ai_composite"
+    assert pv.dst_class(rec) == "ai_composite"
     assert rec["dst_action"] == "c2pa.edited"
 
 
@@ -315,7 +315,7 @@ def test_the_created_action_wins_over_a_later_one():
     m["assertions"][0]["data"]["actions"].insert(
         0, {"action": "c2pa.edited", "digitalSourceType": DST + "compositeSynthetic"})
     rec = pv.parse_manifest_store(_store(m))
-    assert rec["dst_class"] == "capture"
+    assert pv.dst_class(rec) == "capture"
 
 
 def test_an_ai_ingredient_inside_an_edit_that_declares_nothing():
@@ -331,12 +331,11 @@ def test_an_ai_ingredient_inside_an_edit_that_declares_nothing():
     rec = pv.parse_manifest_store(_store(parent, "Valid", _results(
         failure=["signingCredential.untrusted"], deltas=deltas), others=[child]))
     assert rec["state"] == "valid_untrusted"
-    assert rec["active_dst"] is None and rec["dst_class"] == "none"
-    assert rec["dst_signed_valid"] is False
+    assert rec["active_dst"] is None and pv.dst_class(rec) == "none"
     [ing] = rec["ingredients"]
     assert ing["title"] == "ingredient.jpg"
     assert ing["dst"] == DST + "trainedAlgorithmicMedia"
-    assert ing["dst_class"] == "generative_ai"
+    assert pv.classify_dst(ing["dst"]) == "generative_ai"
     assert ing["state"] == "valid_untrusted"
     assert ing["signer"]["common_name"] == "Synthetic Generator"
 
@@ -421,7 +420,7 @@ def test_an_ingredient_s_failures_are_shown_against_the_ingredient():
                                         "claimSignature.mismatch"])]), others=[child]))
     assert rec["state"] == "invalid"
     assert rec["state_reason"] == "an ingredient does not validate (see Ingredients)"
-    assert rec["hard_binding_mismatch"] is False
+    assert pv.hard_binding_mismatch(rec) is False
     rows = dict(pv.describe(rec))
     assert "Hard binding" not in rows
     # claimSignature.mismatch now replaces the claimSignature.validated recorded
@@ -435,8 +434,7 @@ def test_an_ingredient_without_a_manifest_is_absent():
     parent = _manifest(ACTIVE, ingredients=[{"title": "plain.jpg", "relationship": "parentOf"}])
     rec = pv.parse_manifest_store(_store(parent))
     assert rec["ingredients"] == [{"title": "plain.jpg", "relationship": "parentOf",
-                                   "dst": None, "dst_class": "none", "state": "absent",
-                                   "signer": None}]
+                                   "dst": None, "state": "absent", "signer": None}]
 
 
 def test_ingredients_are_followed_recursively_and_a_cycle_is_cut():
@@ -447,9 +445,9 @@ def test_ingredients_are_followed_recursively_and_a_cycle_is_cut():
     parent = _manifest(ACTIVE, ingredients=[_ingredient(CHILD)])
     rec = pv.parse_manifest_store(_store(parent, others=[child, grand]))
     [c] = rec["ingredients"]
-    assert c["dst_class"] == "ai_edited"
+    assert pv.classify_dst(c["dst"]) == "ai_edited"
     [g] = c["ingredients"]
-    assert g["dst_class"] == "generative_ai"
+    assert pv.classify_dst(g["dst"]) == "generative_ai"
     [back] = g["ingredients"]
     assert back["ingredients_not_followed"] == "cycle"
 
@@ -544,7 +542,7 @@ def test_generative_ai_declared_on_a_later_action_is_marked():
     rec = _acting([{"action": "c2pa.created", "digitalSourceType": DST + "digitalCapture"},
                    {"action": "c2pa.edited",
                     "digitalSourceType": DST + "compositeWithTrainedAlgorithmicMedia"}])
-    assert rec["dst_class"] == "capture"
+    assert pv.dst_class(rec) == "capture"
     decl = pv.ai_declaration(rec)
     assert decl["badge"] == "AI declared"
     assert "on its c2pa.edited action: compositeWithTrainedAlgorithmicMedia" in decl["title"]
@@ -657,9 +655,7 @@ def test_an_xmp_source_type_is_an_unsigned_declaration(tmp_path):
     p = tmp_path / "x.jpg"
     p.write_bytes(_jpeg(_app1_xmp(DST + "trainedAlgorithmicMedia")))
     decl = pv.xmp_declaration(pv.scan_blocks(p).xmp)
-    assert decl == {"uri": DST + "trainedAlgorithmicMedia", "class": "generative_ai",
-                    "label": "unsigned declaration",
-                    "field": "XMP Iptc4xmpExt:DigitalSourceType"}
+    assert decl == {"uri": DST + "trainedAlgorithmicMedia"}
 
 
 @pytest.mark.parametrize("packet", [
@@ -669,7 +665,7 @@ def test_an_xmp_source_type_is_an_unsigned_declaration(tmp_path):
     + b'algorithmicMedia"/></rdf:Description>',
 ])
 def test_the_source_type_is_read_as_an_element_too(packet):
-    assert pv.xmp_declaration([packet])["class"] == "algorithmic"
+    assert pv.classify_dst(pv.xmp_declaration([packet])["uri"]) == "algorithmic"
 
 
 def test_xmp_without_the_source_type_field_declares_nothing():
@@ -694,7 +690,7 @@ def test_a_webp_c2pa_chunk_and_xmp_chunk(tmp_path):
     p.write_bytes(bytes(raw))
     blocks = pv.scan_blocks(p)
     assert blocks.mime == "image/webp" and blocks.stores == ["WebP C2PA"]
-    assert pv.xmp_declaration(blocks.xmp)["class"] == "capture"
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "capture"
 
 
 def test_isobmff_c2pa_and_xmp_uuid_boxes(tmp_path):
@@ -705,7 +701,7 @@ def test_isobmff_c2pa_and_xmp_uuid_boxes(tmp_path):
     p.write_bytes(ftyp + c2pa + xmp + _box(b"mdat", bytes(64)))
     blocks = pv.scan_blocks(p)
     assert blocks.mime == "video/mp4" and blocks.stores == ["ISOBMFF C2PA uuid box"]
-    assert pv.xmp_declaration(blocks.xmp)["class"] == "generative_ai"
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "generative_ai"
 
 
 def test_quicktime_udta_xmp(tmp_path):
@@ -715,7 +711,7 @@ def test_quicktime_udta_xmp(tmp_path):
     p.write_bytes(_box(b"ftyp", b"qt  " + bytes(4) + b"qt  ") + moov)
     blocks = pv.scan_blocks(p)
     assert blocks.mime == "video/quicktime" and blocks.known
-    assert pv.xmp_declaration(blocks.xmp)["class"] == "ai_edited"
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "ai_edited"
 
 
 def test_heif_xmp_item_located_through_iloc(tmp_path):
@@ -738,7 +734,7 @@ def test_heif_xmp_item_located_through_iloc(tmp_path):
     p.write_bytes(build(len(head) + 8) + _box(b"mdat", xmp))
     blocks = pv.scan_blocks(p)
     assert blocks.mime == "image/heic"
-    assert pv.xmp_declaration(blocks.xmp)["class"] == "generative_ai"
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "generative_ai"
 
 
 def test_tiff_c2pa_tag_and_xmp_tag(tmp_path):
@@ -747,7 +743,7 @@ def test_tiff_c2pa_tag_and_xmp_tag(tmp_path):
         700: _xmp(DST + "screenCapture"), 52545: b"synthetic store"})
     blocks = pv.scan_blocks(p)
     assert blocks.mime == "image/tiff" and blocks.stores == ["TIFF tag 52545"]
-    assert pv.xmp_declaration(blocks.xmp)["class"] == "screen"
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "screen"
 
 
 def _webp_claiming_more() -> bytes:
@@ -843,9 +839,7 @@ def test_without_the_library_every_file_is_not_checked_and_says_why(tmp_path, mo
     assert rec["library_version"] is None
     assert rec["store_in_bytes"] == "JPEG APP11"
     # the unsigned XMP declaration is still recorded, apart from the C2PA state
-    assert rec["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia", "class": "generative_ai",
-                              "label": "unsigned declaration",
-                              "field": "XMP Iptc4xmpExt:DigitalSourceType"}
+    assert rec["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia"}
     json.dumps(rec)
 
 
@@ -876,7 +870,7 @@ def test_a_store_is_read_with_nothing_fetched_and_parsed(tmp_path, fake_c2pa):
     p.write_bytes(_jpeg(_app11_store()))
     rec = read_in_process(p)
     assert rec["state"] == "valid_untrusted"
-    assert rec["dst_class"] == "generative_ai"
+    assert pv.dst_class(rec) == "generative_ai"
     [(mime, settings)] = lib.calls
     assert mime == "image/jpeg"
     assert settings["verify"] == {"remote_manifest_fetch": False, "ocsp_fetch": False}

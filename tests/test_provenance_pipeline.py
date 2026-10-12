@@ -124,8 +124,7 @@ def test_processing_settles_what_the_bytes_can_and_leaves_the_rest_to_the_reader
         declared = json.loads(rows["declared.jpg"]["c2pa_info"])
         assert rows["declared.jpg"]["c2pa_state"] == "absent"
         assert rows["declared.jpg"]["c2pa_dst_class"] is None       # never folded in
-        assert declared["xmp_dst"]["label"] == "unsigned declaration"
-        assert declared["xmp_dst"]["class"] == "generative_ai"
+        assert declared["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia"}
         stub = json.loads(rows["stub.jpg"]["c2pa_info"])
         assert rows["stub.jpg"]["c2pa_state"] == "not_checked"
         assert stub["state_reason"] == pv.NOT_CHECKED_LIBRARY
@@ -148,7 +147,7 @@ def test_a_file_that_will_not_decode_still_has_its_credentials_read(tmp_path, mo
         row = _rows(case)["cut.jpg"]
         assert row["error"]
         assert row["c2pa_state"] is not None
-        assert json.loads(row["c2pa_info"])["xmp_dst"]["class"] == "capture"
+        assert pv.classify_dst(json.loads(row["c2pa_info"])["xmp_dst"]["uri"]) == "capture"
     finally:
         case.close()
 
@@ -223,7 +222,8 @@ def test_the_pass_reads_a_zip_in_place_and_never_writes_to_it(tmp_path, monkeypa
         ingest_sources(case, [Source(name="zip", path=str(z), kind="archive")])
         process(case, workers=1, screen=False, similar=False)
         rows = {r["rel_path"].split("/")[-1]: r for r in _rows(case).values()}
-        assert json.loads(rows["declared.jpg"]["c2pa_info"])["xmp_dst"]["class"] == "screen"
+        assert pv.classify_dst(
+            json.loads(rows["declared.jpg"]["c2pa_info"])["xmp_dst"]["uri"]) == "screen"
         assert rows["stub.jpg"]["c2pa_state"] == "not_checked"
         assert provenance_pass(case, force=True)["read"] == 2
         assert (z.read_bytes(), z.stat().st_mtime_ns) == before

@@ -60,9 +60,9 @@ def test_a_generated_picture_by_an_unlisted_signer_is_valid_untrusted(tmp_path, 
     assert rec["state"] == "valid_untrusted", rec["codes"]["failure"]
     assert [c["code"] for c in rec["codes"]["failure"]] == ["signingCredential.untrusted"]
     assert rec["active_dst"] == DST + "trainedAlgorithmicMedia"
-    assert rec["dst_class"] == "generative_ai"
-    assert rec["dst_signed_valid"] is True
-    assert rec["hard_binding_mismatch"] is False
+    assert pv.dst_class(rec) == "generative_ai"
+    assert rec["state"] in pv.VALID_STATES
+    assert pv.hard_binding_mismatch(rec) is False
     assert rec["signer"]["common_name"] == "Synthetic Signer"
     assert rec["signer"]["issuer"] == "Synthetic Test Org"
     assert rec["claim_generator"].startswith("Synthetic Generator 1.0")
@@ -104,11 +104,11 @@ def test_a_changed_byte_breaks_the_hard_binding(tmp_path, chain):
     signed[-10] ^= 0xFF                       # inside the entropy-coded scan, before EOI
     rec = _read(_write(tmp_path, "changed.jpg", bytes(signed)))
     assert rec["state"] == "invalid"
-    assert rec["hard_binding_mismatch"] is True
+    assert pv.hard_binding_mismatch(rec) is True
     assert "assertion.dataHash.mismatch" in [c["code"] for c in rec["codes"]["failure"]]
     # what it declared is still recorded, marked as not backed by a valid signature
-    assert rec["dst_class"] == "generative_ai"
-    assert rec["dst_signed_valid"] is False
+    assert pv.dst_class(rec) == "generative_ai"
+    assert rec["state"] not in pv.VALID_STATES
 
 
 def _app11(jpeg: bytes) -> tuple[int, bytes]:
@@ -134,7 +134,7 @@ def test_a_manifest_carried_over_from_other_content_fails_the_same_way(tmp_path,
     other = buf.getvalue()
     rec = _read(_write(tmp_path, "carried.jpg", other[:offset] + store + other[offset:]))
     assert rec["state"] == "invalid"
-    assert rec["hard_binding_mismatch"] is True
+    assert pv.hard_binding_mismatch(rec) is True
     assert "assertion.dataHash.mismatch" in [c["code"] for c in rec["codes"]["failure"]]
     assert dict(pv.describe(rec))["Hard binding"].startswith(
         "does not match the content the manifest was signed for")
@@ -160,13 +160,13 @@ def test_a_capture(tmp_path, chain):
     rec = _read(_write(tmp_path, "capture.jpg",
                        sign(chain, _picture(), "image/jpeg", created("digitalCapture"))))
     assert rec["state"] == "valid_untrusted"
-    assert rec["dst_class"] == "capture"
+    assert pv.dst_class(rec) == "capture"
 
 
 def test_a_composite_synthetic(tmp_path, chain):
     rec = _read(_write(tmp_path, "composite.jpg",
                        sign(chain, _picture(), "image/jpeg", created("compositeSynthetic"))))
-    assert rec["dst_class"] == "ai_composite"
+    assert pv.dst_class(rec) == "ai_composite"
     assert rec["active_dst"] == DST + "compositeSynthetic"
 
 
@@ -178,12 +178,12 @@ def test_an_ai_ingredient_inside_an_edit_that_declares_nothing(tmp_path, chain):
                                              ingredient=generated, generator="Synthetic Editor"))
     rec = _read(p)
     assert rec["state"] == "valid_untrusted"
-    assert rec["active_dst"] is None and rec["dst_class"] == "none"
+    assert rec["active_dst"] is None and pv.dst_class(rec) == "none"
     assert rec["claim_generator"].startswith("Synthetic Editor")
     assert len(rec["ingredients"]) == 1
     ing = rec["ingredients"][0]
     assert ing["title"] == "ingredient.jpg"
-    assert ing["dst_class"] == "generative_ai"
+    assert pv.classify_dst(ing["dst"]) == "generative_ai"
     assert ing["state"] == "valid_untrusted"
     assert ing["signer"]["common_name"] == "Synthetic Signer"
 
@@ -212,11 +212,9 @@ def test_an_xmp_source_type_without_credentials_is_an_unsigned_declaration(tmp_p
            b'</rdf:RDF></x:xmpmeta>')
     rec = _read(_write(tmp_path, "declared.jpg", _picture(xmp=xmp)))
     assert rec["state"] == "absent"
-    assert rec["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia", "class": "generative_ai",
-                              "label": "unsigned declaration",
-                              "field": "XMP Iptc4xmpExt:DigitalSourceType"}
+    assert rec["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia"}
     # kept apart from the C2PA fields, never folded into them; no manifest, no class
-    assert rec["active_dst"] is None and rec["dst_class"] is None
+    assert rec["active_dst"] is None and pv.dst_class(rec) is None
 
 
 def test_a_signer_on_an_examiner_list_is_trusted_and_the_list_named(tmp_path, chain):
@@ -289,7 +287,7 @@ def test_png_and_webp_carry_their_store_where_the_scan_looks(tmp_path, chain):
         rec = _read(p)
         assert rec["store_in_bytes"] == where, fmt
         assert rec["state"] == "valid_untrusted", (fmt, rec["codes"]["failure"])
-        assert rec["dst_class"] == "generative_ai", fmt
+        assert pv.dst_class(rec) == "generative_ai", fmt
 
 
 def test_a_signed_clip(tmp_path, chain):
@@ -306,7 +304,7 @@ def test_a_signed_clip(tmp_path, chain):
     rec = _read(p)
     assert rec["store_in_bytes"] == "ISOBMFF C2PA uuid box"
     assert rec["state"] == "valid_untrusted", rec["codes"]["failure"]
-    assert rec["dst_class"] == "generative_ai"
+    assert pv.dst_class(rec) == "generative_ai"
 
 
 def test_a_container_the_scan_does_not_walk_is_left_to_the_reader(tmp_path):

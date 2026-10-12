@@ -719,7 +719,7 @@ def _c2pa_cells(row: dict) -> list[str]:
     cls = row.get("c2pa_dst_class")
     if cls and cls != "none":
         declared = provenance.DST_CLASS_LABELS.get(cls, cls)
-        if state not in ("valid_untrusted", "trusted"):
+        if state not in provenance.VALID_STATES:
             declared += f" ({provenance.NOT_BACKED})"
     return [provenance.STATE_LABELS.get(state, "Not read yet") if state else "Not read yet",
             declared, row.get("c2pa_signer") or "", provenance.describe_text(record)]

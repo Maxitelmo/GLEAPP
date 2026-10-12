@@ -5,10 +5,13 @@ whether the signature validates. It is not a classifier: it never says whether c
 is synthetic, gives no score, and nothing in GLEAPP sets or changes a category from it.
 
     state        absent | malformed | invalid | valid_untrusted | trusted | not_checked
-    active_dst   the digital source type the active manifest's actions declare, as a URI
-    dst_class    the vocabulary group that URI belongs to (``DST_CLASSES``)
+    active_dst   the digital source type the active manifest declares, as a URI
     xmp_dst      an IPTC DigitalSourceType found in XMP, an *unsigned declaration*, kept
                  apart from the C2PA state and never folded into it
+
+A record holds what was declared and what the validator reported. The class of a source
+type (``DST_CLASSES``) is GLEAPP's grouping of its URI and is worked out where it is
+shown; only the ``c2pa_dst_class`` column keeps one, for the filter (``DST_VOCABULARY``).
 
 The state follows the validator in c2pa-python (c2pa-rs 0.91.0), not the raw failure
 list. C2PA 2.2 puts ``signingCredential.untrusted`` in its failure table (§15.2.2.3) yet
@@ -61,7 +64,7 @@ STATE_LABELS = {
     "trusted": "Valid, signer on a trust list",
     "not_checked": "Not checked",
 }
-_VALID = ("valid_untrusted", "trusted")       # the states whose signature validates
+VALID_STATES = ("valid_untrusted", "trusted")   # the states whose signature validates
 # The same states, short enough for a list column (16 characters at most).
 STATE_SHORT = {
     "absent": "None",
@@ -158,11 +161,11 @@ _DST_URI_FORM = re.compile(r"(?i:https?://(cv\.iptc\.org/newscodes|c2pa\.org)"
 # The terms IPTC has retired (release of 2024-10-23). A file can still declare
 # one, so each is read and keeps its class; wherever a term is shown, it says so.
 RETIRED_TERMS = frozenset(("minorHumanEdits", "digitalArt", "softwareImage"))
-# What a file declares is the URI, and every record keeps it; the class is worked out
-# from it. ``load`` works each class out again, and a case's c2pa_dst_class column is
-# worked out again once per value of this (``CaseDB.refresh_dst_classes``), so **a
-# build that moves a term to another class has to raise it**, or every case an older
-# build read keeps the older class in the column the filter and the list read.
+# What a file declares is the URI, and a record keeps that and no class. The one class
+# kept is the c2pa_dst_class column, which the filter and the list read; it is worked
+# out again once per value of this (``CaseDB.refresh_dst_classes``), so **a build that
+# moves a term to another class has to raise it**, or every case an older build read
+# keeps the older class in that column.
 DST_VOCABULARY = 1
 
 # The codes C2PA's Asset Rubrics v1.0 (C2PA Conformance Task Force, 2026-08-06,
@@ -424,7 +427,7 @@ def _ingredients(store: dict, manifest: dict, results: dict, tsa_uris: frozenset
         label = ing.get("active_manifest")
         child = (store.get("manifests") or {}).get(label) if label else None
         if not isinstance(child, dict):
-            entry.update(dst=None, dst_class="none", state="absent", signer=None)
+            entry.update(dst=None, state="absent", signer=None)
             out.append(entry)
             continue
         recorded = _codes((ing.get("validation_results") or {}).get("activeManifest"))
@@ -440,8 +443,7 @@ def _ingredients(store: dict, manifest: dict, results: dict, tsa_uris: frozenset
                  for m in [_LIST_IN_EXPLANATION.search(c.get("explanation", ""))] if m]
         state, reason = _state(None, success, failures, named[0] if named else None, tsa_uris)
         dst, _action = _dst(child)
-        entry.update(dst=dst, dst_class=classify_dst(dst), state=state,
-                     signer=_signer(child),
+        entry.update(dst=dst, state=state, signer=_signer(child),
                      signature_validated="claimSignature.validated" in success)
         if _blocking(failures):
             entry["failures"] = _blocking(failures)
@@ -480,7 +482,7 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
     trust_list_uri = results.get("trustListUri")
     state, reason = _state(store.get("validation_state"), success, failures,
                            trust_list_uri, tsa_uris)
-    if state not in _VALID and not _blocking(own) and _blocking(failures):
+    if state not in VALID_STATES and not _blocking(own) and _blocking(failures):
         reason = "an ingredient does not validate (see Ingredients)"
     dst, action = _dst(manifest)
     record: dict[str, Any] = {
@@ -494,13 +496,7 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
         "signed_time": (manifest.get("signature_info") or {}).get("time"),
         "active_manifest": label,
         "active_dst": dst,
-        "dst_class": classify_dst(dst),
         "dst_action": action,
-        # C2PA 2.2 §15.3: data from a manifest that is not valid is not attributable
-        # to its signer; it is recorded, and marked so
-        "dst_signed_valid": bool(dst) and state in _VALID,
-        # the active manifest's own bindings: an ingredient's are its own
-        "hard_binding_mismatch": any(c in HARD_BINDING_MISMATCH for c in own),
         "ingredients": _ingredients(store, manifest, results, tsa_uris, 1, {label}),
         "spec_version": results.get("specVersion"),
         "trust_list_uri": trust_list_uri,
@@ -847,8 +843,7 @@ def xmp_declaration(xmp: list[bytes]) -> dict | None:
         found = _DST_IN_XMP.search(packet.decode("utf-8", "replace"))
         if found:
             uri = next(g for g in found.groups() if g)
-            return {"uri": uri, "class": classify_dst(uri), "label": UNSIGNED,
-                    "field": "XMP Iptc4xmpExt:DigitalSourceType"}
+            return {"uri": uri}
     return None
 
 
@@ -1145,12 +1140,11 @@ UNREADABLE = "the c2pa reader could not read the file"
 def prescan(path: str | Path) -> tuple[dict, dict | None]:
     """(record, request). The part of a read GLEAPP does itself, from the bytes.
     ``request`` is None when the record is final; otherwise it is what the reader
-    is to be asked: ``{"path", "mime", "remote"}``. ``dst_class`` stays None until
-    a manifest is read: a file nobody read declares nothing either way."""
+    is to be asked: ``{"path", "mime", "remote"}``."""
     path = str(path)
     record: dict[str, Any] = {
         "state": "not_checked", "codes": _codes(None), "active_dst": None,
-        "dst_class": None, "ingredients": [], "xmp_dst": None, "store_in_bytes": None,
+        "ingredients": [], "xmp_dst": None, "store_in_bytes": None,
         "library_version": None, "gleapp_version": __version__,
         # a result can change with time (a certificate expires), so it is dated
         "read_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
@@ -1312,13 +1306,19 @@ def read_batch(paths: Iterable[str | Path], *, trust: TrustLists) -> dict[str, d
     return out
 
 
+def dst_class(record: dict) -> str | None:
+    """The class of the source type a record's manifest declares ("none" when it
+    declares none); None when no manifest was read, since then nothing was declared
+    either way."""
+    return classify_dst(record.get("active_dst")) if record.get("active_manifest") else None
+
+
 def columns(record: dict) -> dict:
     """The four columns ``files`` keeps for a record. The signer column names a signer
-    only when the claim signature verified, and the class stays None when no manifest
-    was read."""
+    only when the claim signature verified."""
     validated = record.get("signature_validated")
     return {"c2pa_state": record["state"],
-            "c2pa_dst_class": record.get("dst_class"),
+            "c2pa_dst_class": dst_class(record),
             "c2pa_signer": (signer_text(record.get("signer")) or None) if validated else None,
             "c2pa_info": json.dumps(record, sort_keys=True)}
 
@@ -1329,9 +1329,10 @@ EMPTY_COLUMNS = {"c2pa_state": None, "c2pa_dst_class": None, "c2pa_signer": None
 
 # -- words for the surfaces -----------------------------------------------------------
 
-def _term_text(uri: str, cls: str | None) -> str:
+def _term_text(uri: str) -> str:
     """'term (class)' for a URI of IPTC's or C2PA's vocabulary, the term marked when
     IPTC has retired it; any other URI is shown whole, so where it comes from shows."""
+    cls = classify_dst(uri)
     found = _dst_uri(uri)
     term = found.group(2) if found else str(uri)
     if found and term in RETIRED_TERMS and found.group(1).lower() != "c2pa.org":
@@ -1356,7 +1357,7 @@ def _ingredient_lines(ingredients: list, depth: int = 0) -> list[str]:
     for ing in ingredients or []:
         dst = ing.get("dst")
         state = STATE_SHORT.get(ing.get("state"), ing.get("state") or "")
-        parts = [_term_text(dst, ing.get("dst_class")) if dst else "no source type declared",
+        parts = [_term_text(dst) if dst else "no source type declared",
                  f"{state} ({ing['state_reason']})" if ing.get("state_reason") else state]
         who = _signer_row(ing.get("signer"), bool(ing.get("signature_validated")))
         if who:
@@ -1383,7 +1384,7 @@ def _actions_text(record: dict) -> str | None:
             continue
         line = a.get("action") or "(no action named)"
         if a.get("dst"):
-            line += f"; source type: {_term_text(a['dst'], classify_dst(a['dst']))}"
+            line += f"; source type: {_term_text(a['dst'])}"
         if a.get("software_agent"):
             line += f"; software agent: {a['software_agent']}"
         lines.append(line)
@@ -1391,7 +1392,7 @@ def _actions_text(record: dict) -> str | None:
         lines.append(f"and {record['actions_omitted']} more")
     if not lines:
         return "none declared"
-    if record.get("state") not in _VALID:
+    if record.get("state") not in VALID_STATES:
         lines.insert(0, NOT_BACKED + ":")       # C2PA 2.2 §15.3, as for the source type
     return "\n".join(lines)
 
@@ -1421,8 +1422,8 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if record.get("claim_generator"):
         rows.append(("Claim generator", str(record["claim_generator"])))
     if record.get("active_dst"):
-        text = _term_text(record["active_dst"], record.get("dst_class"))
-        if not record.get("dst_signed_valid"):
+        text = _term_text(record["active_dst"])
+        if state not in VALID_STATES:           # C2PA 2.2 §15.3
             text += ", " + NOT_BACKED
         rows.append(("Declared source type", text))
     actions = _actions_text(record)
@@ -1432,12 +1433,12 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
         listed = str(record["trusted_by"])
         if not validated:
             listed += "; the claim signature did not verify, so this does not show who signed"
-        elif state not in _VALID:
+        elif state not in VALID_STATES:
             # a fact about the certificate, which vouches for nothing in a manifest
             # that does not validate (C2PA 2.2 §15.3)
             listed += "; the manifest does not validate, so this vouches for nothing in it"
         rows.append(("Signer's trust list", listed))
-    if record.get("hard_binding_mismatch"):
+    if hard_binding_mismatch(record):
         rows.append(("Hard binding", "does not match the content the manifest was signed "
                      "for (for example, the content changed after signing, or the manifest "
                      "belongs to other content)"))
@@ -1451,7 +1452,7 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     xmp = record.get("xmp_dst")
     if xmp:
         rows.append(("XMP source type",
-                     f"{_term_text(xmp.get('uri', ''), xmp.get('class'))}, {UNSIGNED}"))
+                     f"{_term_text(xmp.get('uri', ''))}, {UNSIGNED}"))
     if record.get("remote_url"):
         rows.append(("Remote manifest", str(record["remote_url"])))
     if record.get("store_in_bytes"):
@@ -1472,7 +1473,7 @@ def _ai_ingredient(ingredients: Any) -> dict | None:
     for ing in ingredients if isinstance(ingredients, list) else []:
         if not isinstance(ing, dict):
             continue
-        if ing.get("dst") and ing.get("dst_class") in AI_CLASSES:
+        if classify_dst(ing.get("dst")) in AI_CLASSES:
             return ing
         found = _ai_ingredient(ing.get("ingredients"))
         if found:
@@ -1481,7 +1482,7 @@ def _ai_ingredient(ingredients: Any) -> dict | None:
 
 
 def _mark(badge: str, what: str, state: str | None) -> dict:
-    backed = state in _VALID
+    backed = state in VALID_STATES
     label = STATE_LABELS.get(state, state or "")
     return {"badge": badge, "backed": backed,
             "text": badge if backed else f"{badge}, {NOT_BACKED}",
@@ -1503,21 +1504,20 @@ def ai_declaration(record: dict | None) -> dict | None:
     if not own and record.get("active_dst"):
         own = [(record["active_dst"], record.get("dst_action"))]
     for uri, action in own:
-        cls = classify_dst(uri)
-        if cls in AI_CLASSES:
+        if classify_dst(uri) in AI_CLASSES:
             return _mark("AI declared", "Declared by the file's Content Credentials"
                          + (f", on its {action} action" if action else "")
-                         + f": {_term_text(uri, cls)}", record.get("state"))
+                         + f": {_term_text(uri)}", record.get("state"))
     xmp = record.get("xmp_dst")
-    if isinstance(xmp, dict) and xmp.get("uri") and xmp.get("class") in AI_CLASSES:
+    if isinstance(xmp, dict) and classify_dst(xmp.get("uri")) in AI_CLASSES:
         return {"badge": "AI declared", "backed": False, "text": "AI declared, unsigned (XMP)",
-                "title": f"Declared in the file's XMP: {_term_text(xmp['uri'], xmp['class'])}, "
+                "title": f"Declared in the file's XMP: {_term_text(xmp['uri'])}, "
                          f"{UNSIGNED}. {DECLARATION_NOTE}"}
     ing = _ai_ingredient(record.get("ingredients"))
     if ing:
         title = ing.get("title") or "untitled"
         return _mark("AI in ingredient", f'Declared by the ingredient "{title}": '
-                     f"{_term_text(ing['dst'], ing['dst_class'])}", ing.get("state"))
+                     f"{_term_text(ing['dst'])}", ing.get("state"))
     return None
 
 
@@ -1526,36 +1526,23 @@ def describe_text(record: dict | None) -> str:
     return "\n".join(f"{k}: {v}" for k, v in describe(record))
 
 
+def hard_binding_mismatch(record: dict) -> bool:
+    """Whether the active manifest's own hard binding failed: the content is not the
+    content it was signed for. An ingredient's bindings are its own."""
+    return any(isinstance(c, dict) and c.get("code") in HARD_BINDING_MISMATCH
+               for c in (record.get("codes") or {}).get("failure", []))
+
+
 def xmp_text(record: dict | None) -> str:
     """The URI the XMP declares, marked as an unsigned declaration, or ''."""
     xmp = (record or {}).get("xmp_dst")
     return f"{xmp.get('uri')} ({UNSIGNED})" if xmp else ""
 
 
-def _reclassify(ingredients: Any) -> None:
-    for ing in ingredients if isinstance(ingredients, list) else []:
-        if isinstance(ing, dict):
-            if "dst_class" in ing:
-                ing["dst_class"] = classify_dst(ing.get("dst"))
-            _reclassify(ing.get("ingredients"))
-
-
 def load(info: str | None) -> dict | None:
-    """The record kept in ``files.c2pa_info``, or None, with each class worked out
-    again from the URI it was decided from (``DST_VOCABULARY``). The stored text is
-    not changed: it stays the record as it was read."""
-    if not info:
-        return None
+    """The record kept in ``files.c2pa_info``, or None."""
     try:
-        rec = json.loads(info)
+        rec = json.loads(info) if info else None
     except (TypeError, ValueError):
         return None
-    if not isinstance(rec, dict):
-        return None
-    if rec.get("dst_class") is not None:      # None: no manifest was read
-        rec["dst_class"] = classify_dst(rec.get("active_dst"))
-    _reclassify(rec.get("ingredients"))
-    xmp = rec.get("xmp_dst")
-    if isinstance(xmp, dict) and "class" in xmp:
-        xmp["class"] = classify_dst(xmp.get("uri"))
-    return rec
+    return rec if isinstance(rec, dict) else None

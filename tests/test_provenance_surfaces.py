@@ -311,7 +311,7 @@ def test_csv_and_json_carry_the_record(case, tmp_path):
     payload = json.loads(report.export_json(case, tmp_path / "r.json").read_text(
         encoding="utf-8"))
     files = {f["rel_path"]: f for f in payload["files"]}
-    assert files["changed.jpg"]["c2pa_info"]["hard_binding_mismatch"] is True
+    assert pv.hard_binding_mismatch(files["changed.jpg"]["c2pa_info"])
     assert payload["c2pa_caveat"] == pv.CAVEAT
 
 

@@ -614,9 +614,9 @@ class CaseDB:
     def refresh_dst_classes(self) -> int:
         """Work ``c2pa_dst_class`` out again from the URI each record keeps, once
         for each ``provenance.DST_VOCABULARY``, and return how many rows changed.
-        ``c2pa_info`` is never rewritten: it stays the record as it was read, and
-        ``provenance.load`` works its classes out again. A row an older build writes
-        into the case after this has run is not seen until the vocabulary changes."""
+        ``c2pa_info`` holds no class and is never rewritten. A row an older build
+        writes into the case after this has run is not seen until the vocabulary
+        changes."""
         want = str(provenance.DST_VOCABULARY)
         with self.lock:
             if self.get_meta("c2pa_dst_vocabulary") == want:
@@ -633,7 +633,7 @@ class CaseDB:
                 rec = provenance.load(r["c2pa_info"])
                 if rec is None:
                     continue
-                cls = provenance.classify_dst(rec.get("active_dst"))
+                cls = provenance.dst_class(rec)
                 if cls != r["c2pa_dst_class"]:
                     changed.append((cls, r["id"]))
             if changed:
