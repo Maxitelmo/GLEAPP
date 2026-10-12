@@ -2244,14 +2244,23 @@ MIT license).
 
 ### Content Credentials (section 20)
 
+CC BY 4.0 below is the Creative Commons Attribution 4.0 International licence
+(<https://creativecommons.org/licenses/by/4.0/>); its full text ships with the trust
+lists.
+
 - **C2PA Trust List** and **C2PA TSA Trust List**: published by the Coalition for
-  Content Provenance and Authenticity in `c2pa-org/conformance-public`, CC BY 4.0.
-  GLEAPP carries them unmodified (`gleapp/trust/`, with the licence text).
-- **C2PA Technical Specification**: Coalition for Content Provenance and Authenticity,
-  CC BY 4.0. GLEAPP uses its status codes and digital source type identifiers.
-- **IPTC Digital Source Type NewsCodes**: International Press Telecommunications
-  Council, CC BY 4.0. GLEAPP uses the vocabulary's identifiers and labels, and quotes
-  its definitions where a class needs one.
+  Content Provenance and Authenticity in
+  [`c2pa-org/conformance-public`](https://github.com/c2pa-org/conformance-public),
+  CC BY 4.0. GLEAPP carries them unmodified (`gleapp/trust/`, with the licence text).
+- **[C2PA Technical Specification 2.2](https://c2pa.org/specifications/specifications/2.2/specs/C2PA_Specification.html)**
+  and the **C2PA Asset Rubrics** (in `c2pa-org/conformance-public`): Coalition for
+  Content Provenance and Authenticity, CC BY 4.0. GLEAPP uses the specification's
+  status codes and digital source type identifiers, and the rubrics' list of the codes
+  that make a manifest not well-formed.
+- **[IPTC Digital Source Type NewsCodes](https://cv.iptc.org/newscodes/digitalsourcetype/)**:
+  © IPTC, International Press Telecommunications Council, CC BY 4.0. GLEAPP uses the
+  vocabulary's identifiers and labels, and quotes its definitions where a class needs
+  one.
 - **c2pa-python**: Adobe and contributors (MIT OR Apache-2.0), with the c2pa-rs
   library inside it. An optional extra that validates signatures; GLEAPP's release
   builds do not include it.
