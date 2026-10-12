@@ -33,7 +33,7 @@ from ..case import open_case, parse_source_spec
 from ..db import FILE_PATH_SQL, ORIGINS, TOOL_ACTOR
 from ..facematch import find_matching_faces
 from ..ingest import DOCUMENT_EXTS, is_exoplayer_cache_name
-from ..pipeline import ingest_sources, process
+from ..pipeline import PROVENANCE_ROWS, ingest_sources, process
 from ..similar import find_similar
 
 AUTO_BACKUP_POLL = 60.0   # seconds between the snapshot loop's checks
@@ -370,6 +370,8 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
         d["flags"] = [dict(r) for r in case.db.flags_for(d["id"])]
         # a file joined from an app's ExoPlayer cache, described for the details pane
         d["cache_desc"] = exocache.describe(d)
+        # the whole provenance record; the details pane is sent it worded (c2pa_rows)
+        d.pop("c2pa_info", None)
         d["has_keyframes"] = bool(
             case.db.conn.execute(
                 "SELECT 1 FROM keyframes WHERE file_id=? LIMIT 1", (d["id"],)
@@ -714,14 +716,12 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
 
     @app.post("/api/provenance")
     def run_provenance():
-        """Read Content Credentials for every picture and video not read yet (and
-        the not-checked ones again), or all of them with {"force": true}."""
+        """Read Content Credentials for every picture and video not read yet, and the
+        not-checked ones again."""
         if state["case"] is None:
             abort(409, description="no case open")
         if state["job"]["running"]:
             abort(409, description="a job is already running")
-        body = request.get_json(silent=True) or {}
-        force = bool(body.get("force"))
         case = state["case"]
         state["job"] = {"running": True, "stage": "process", "done": 0,
                         "total": 0, "message": "Reading Content Credentials…",
@@ -731,8 +731,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             j = state["job"]
             try:
                 from ..pipeline import provenance_pass
-                counts = provenance_pass(case, force=force,
-                                         progress=lambda d, t: j.update(done=d, total=t))
+                counts = provenance_pass(case, progress=lambda d, t: j.update(done=d, total=t))
                 j.update(running=False, stage="done",
                          message="Content Credentials read", stats=counts)
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -1393,7 +1392,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                 where.append("c2pa_state IN ('malformed', 'invalid', 'valid_untrusted', "
                              "'trusted')")
             elif c2pa_q == "unread":
-                where.append("c2pa_state IS NULL AND kind IN ('image', 'video')")
+                where.append(f"c2pa_state IS NULL AND {PROVENANCE_ROWS}")
             if q.get("c2pa_dst") in provenance.DST_CLASSES:
                 eq("c2pa_dst_class", q["c2pa_dst"])
             if q.get("in_archive") == "1":
@@ -2020,7 +2019,7 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
             # Content Credentials: each state, and the pictures and videos not read
             + ", ".join(f"COALESCE(SUM(c2pa_state = '{st}'), 0) c2pa_{st}"
                         for st in provenance.STATES) + ", "
-            "COALESCE(SUM(kind IN ('image','video') AND c2pa_state IS NULL), 0) c2pa_unread "
+            f"COALESCE(SUM(c2pa_state IS NULL AND {PROVENANCE_ROWS}), 0) c2pa_unread "
             "FROM files").fetchone()
         scr = {"n": one["n"], "wf": one["wf"], "ws": one["ws"]}
         n_err, n_retry = one["n_err"], one["n_retry"]

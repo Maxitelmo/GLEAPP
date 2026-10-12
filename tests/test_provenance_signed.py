@@ -22,6 +22,7 @@ from gleapp import provenance as pv
 
 pytest.importorskip("c2pa")
 # pylint: disable=wrong-import-position,wrong-import-order
+from c2pafake import read_in_process  # noqa: E402  pylint: disable=import-error
 from c2pasign import DST, created, make_chain, sign  # noqa: E402  pylint: disable=import-error
 
 
@@ -44,7 +45,7 @@ def _write(tmp_path, name: str, data: bytes):
 
 
 def _read(path, trust=None):
-    return pv.read_provenance(path, trust=trust or pv.bundled_trust_lists())
+    return read_in_process(path, trust)
 
 
 # -- the cases ------------------------------------------------------------------------
@@ -197,7 +198,7 @@ def test_without_the_library_a_signed_file_is_not_checked(tmp_path, chain, monke
     p = _write(tmp_path, "generated.jpg",
                sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     monkeypatch.setitem(sys.modules, "c2pa", None)
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"] == pv.NOT_CHECKED_LIBRARY
     assert rec["store_in_bytes"] == "JPEG APP11"
@@ -223,7 +224,7 @@ def test_a_signer_on_an_examiner_list_is_trusted_and_the_list_named(tmp_path, ch
     anchors = _write(tmp_path, "synthetic-ca.pem", ca_pem)
     p = _write(tmp_path, "generated.jpg",
                sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
-    rec = pv.read_provenance(p, trust=pv.trust_lists(signer_anchors=anchors))
+    rec = read_in_process(p, trust=pv.trust_lists(signer_anchors=anchors))
     assert rec["state"] == "trusted", rec["codes"]["failure"]
     assert rec["codes"]["failure"] == []
     assert rec["trusted_by"] == "examiner signer anchors: synthetic-ca.pem"
@@ -239,7 +240,7 @@ def test_a_signer_trusted_only_through_a_tsa_anchor_is_not_trusted(tmp_path, cha
     p = _write(tmp_path, "generated.jpg",
                sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     trust = pv.TrustLists((pv.Anchor("tsa", ca_pem, "synthetic CA loaded as a TSA"),))
-    rec = pv.read_provenance(p, trust=trust)
+    rec = read_in_process(p, trust=trust)
     assert rec["state"] == "valid_untrusted"
     assert "TSA" in rec["state_reason"]
 
@@ -249,7 +250,7 @@ READS = 16      # c2pa-rs 0.91.0 left this to chance about half the time on each
 
 def _every_read(p, trust) -> set:
     return {(r["state"], r["trusted_by"])
-            for r in (pv.read_provenance(p, trust=trust) for _ in range(READS))}
+            for r in (read_in_process(p, trust=trust) for _ in range(READS))}
 
 
 def test_a_signer_on_a_signer_list_and_a_tsa_list_is_trusted_on_every_read(tmp_path, chain):

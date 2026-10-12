@@ -1875,9 +1875,7 @@ a name and version, or the text an older manifest carries. They are transcribed 
 and never classified, so an action GLEAPP has no word for, such as a vendor's own
 <code>com.example.provided</code>, is shown as it stands. The actions of a manifest that
 is not valid are marked <strong>not backed by credentials that validate</strong>. A manifest that
-declares none says <strong>none declared</strong>; a file read by a GLEAPP that did not
-keep actions says so instead, and <code>gleapp provenance --force</code> reads it again.
-They show in the details pane, the HTML report's Content Credentials field and LAVA's
+declares none says <strong>none declared</strong>. They show in the details pane, the HTML report's Content Credentials field and LAVA's
 Content Credentials Detail.</p>
 
 <h3>What a state does not mean</h3>
@@ -1891,9 +1889,10 @@ List</strong> as published in <code>c2pa-org/conformance-public</code>, unmodifi
 C2PA 2.2, §14.4.1 and §14.4.2, say a validator's anchors include these lists and that
 the user should be able to add to them, so anchors of your own are <strong>added</strong>
 to C2PA's, never put in their place, and only a newer copy of a C2PA list can stand in
-for the copy GLEAPP carries. Set them in the app's config, or for one run with
+for the copy GLEAPP carries. Give them for a run of <code>gleapp provenance</code> with
 <code>--trust-anchors</code>, <code>--tsa-anchors</code>, <code>--c2pa-trust-list</code>
-and <code>--c2pa-tsa-trust-list</code>. A list that cannot be read stops the reading
+and <code>--c2pa-tsa-trust-list</code>; processing and the gallery's button read with the
+lists GLEAPP carries. A list that cannot be read stops the reading
 with that reason; GLEAPP never falls back to another list silently. Each record lists
 the trust lists it was read with, by label and SHA-256, and for a signer on a trust list
 names the one it chained to. When the claim signature does not verify, that row says the

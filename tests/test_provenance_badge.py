@@ -136,14 +136,6 @@ def test_nothing_declared_gets_no_mark():
     assert pv.ai_declaration(_record(None)) is None
 
 
-def test_a_class_stored_by_an_older_vocabulary_does_not_set_the_mark():
-    """Vocabulary 1 stored virtualRecording as "Composite with AI"; the mark follows
-    the URI, as everything else does."""
-    stale = {"state": "valid_untrusted", "active_dst": DST + "virtualRecording",
-             "dst_class": "ai_composite", "ingredients": [], "xmp_dst": None}
-    assert pv.ai_declaration(pv.load(json.dumps(stale))) is None
-
-
 # -- the gallery -------------------------------------------------------------------------
 
 RECORDS = {

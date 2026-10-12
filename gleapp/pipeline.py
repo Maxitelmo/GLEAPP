@@ -447,16 +447,18 @@ def screen_pass(case: Case, *, workers: int = 4, progress=None) -> int:
     return n[0]
 
 
-# Rows the pass reads, besides those it is handed by id. not_checked is read again
-# by default, since what stopped it (no library, a trust list) may have changed.
-_PROVENANCE_ROWS = (
+# The rows that carry Content Credentials to read: pictures and videos with bytes.
+# An online-only placeholder has none, so it is never read and never "not read yet";
+# the gallery counts and filters unread rows with this too.
+PROVENANCE_ROWS = (
     "kind IN ('image', 'video') AND "
     f"(error IS NULL OR error NOT LIKE '{archive.PLACEHOLDER_ERROR}%')")
+_PROVENANCE_BATCH = 25     # files per reader process and per commit
 
 
 def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = True,
                     force: bool = False, trust: provenance.TrustLists | None = None,
-                    progress=None, batch: int = 25) -> dict:
+                    progress=None) -> dict:
     """Read Content Credentials and the IPTC source type for pictures and videos.
 
     ``ids`` limits it to those rows (processing hands over the files it found a
@@ -464,10 +466,9 @@ def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = T
     not_checked ones too unless ``retry`` is off, or every row with ``force``.
     Bytes come from where processing takes them (``archive.local_copies``: the file
     itself, or a copy under the case folder that is removed after the batch), and
-    the source is never written to. Raises TrustListError, before any row is read,
-    when a configured trust list cannot be read.
+    the source is never written to. ``trust`` defaults to the lists GLEAPP carries.
     """
-    trust = trust if trust is not None else provenance.configured_trust_lists()
+    trust = trust if trust is not None else provenance.trust_lists()
     if ids is not None:
         rows = []
         for i in range(0, len(ids), 500):
@@ -477,14 +478,14 @@ def provenance_pass(case: Case, *, ids: list[int] | None = None, retry: bool = T
     else:
         unread = "1" if force else (
             "(c2pa_state IS NULL" + (" OR c2pa_state = 'not_checked')" if retry else ")"))
-        rows = case.db.iter_files(f"{_PROVENANCE_ROWS} AND {unread}")
+        rows = case.db.iter_files(f"{PROVENANCE_ROWS} AND {unread}")
     recs = archive.source_records(case)
     total, done = len(rows), 0
     states: dict[str, int] = {}
     versions: set[str] = set()
     unavailable = 0
-    for i in range(0, total, batch):
-        chunk = rows[i:i + batch]
+    for i in range(0, total, _PROVENANCE_BATCH):
+        chunk = rows[i:i + _PROVENANCE_BATCH]
         with archive.local_copies(case.root, recs, chunk) as (local, failed):
             records = provenance.read_batch([str(p) for p in local.values()], trust=trust)
             for r in chunk:

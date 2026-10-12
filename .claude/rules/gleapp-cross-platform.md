@@ -1136,16 +1136,14 @@ reconstruction, not a record, and its 290-odd crates include CDLA-Permissive-2.0
 certifi (MPL-2.0) and cryptography with a static OpenSSL 4.0.3, and about 293 MB of
 `.pdb`/`.lib`/`.exp` build files on Windows. So the spec excludes `c2pa` (PyInstaller
 follows the import inside a function), and the frozen app records "Not checked: the
-c2pa library is not installed". The exclude keeps the code out and not the metadata: PyInstaller
-copies a distribution's dist-info wherever the code names it to `importlib.metadata`, and
-`provenance.library_version()` asks for `c2pa-python`. Measured 2026-10-11 on Linux with
-PyInstaller 6.22.2 and the extra installed: the bundle carried
-`c2pa_python-0.38.0.dist-info`, a RECORD of files it did not hold, and none of the package.
-The spec drops it after the analysis. The app behaved the same either way, since
-`library_available()` asks `find_spec`, and CI and release builds install `.[build]`
-alone, so only a build made beside the extra had it. `tests/test_c2pa_packaging.py` pins
-the extra, its absence from the requirements, the exclude, the dropped metadata and the CI
-split.
+c2pa library is not installed". The exclude keeps the code out, not the metadata:
+PyInstaller copies the dist-info of any distribution the code names to
+`importlib.metadata`, excluded or not. Measured 2026-10-11 on Linux with PyInstaller 6.22.2
+and the extra installed, while the code called `metadata.version("c2pa-python")`: the
+bundle carried `c2pa_python-0.38.0.dist-info`, a RECORD of files it did not hold. The
+version now comes from `c2pa.__version__`. `tests/test_c2pa_packaging.py` pins the extra,
+its absence from the requirements, the exclude, that the code names no distribution to
+`importlib.metadata`, and the CI split.
 
 **CI runs both paths.** The Linux `pytest` job and `windows-smoke` install `.[dev,provenance]`
 so the tests that sign synthetic fixtures with the real library run; the runtime-contract
@@ -1173,13 +1171,33 @@ several lists of one kind, so each record names it. It also reports Trusted for 
 that chains only to an anchor loaded as a TSA; GLEAPP records that as valid_untrusted.
 
 **The native library never loads in the GLEAPP process.** The parent decides from the bytes
-(no store and no remote reference in a JPEG, PNG, WebP, TIFF or ISOBMFF file is absent, with
-or without the library) and checks only that the package is installed; a file holding a
-store is read by `gleapp/_c2paworker.py`, a batch at a time, the paths and anchors on stdin.
-A batch that stops is split until the file it stopped on is alone. `NotSupported`, `Io` and
-`FileNotFound` from the reader say nothing about a manifest and are not_checked; every other
-`C2paError` is malformed. With an empty format c2pa sniffs the bytes itself: a GIF reads as
-no manifest, a BMP or ICO as unsupported (c2pa-rs 0.91.0).
+and checks only that the package is installed; a file holding a store is read by
+`gleapp/_c2paworker.py`, a batch at a time, the paths and anchors on stdin. A batch that
+stops is split until the file it stopped on is alone. `NotSupported`, `Io` and
+`FileNotFound` from the reader say nothing about a manifest and are not_checked, and so is
+a remote manifest, which c2pa-python 0.38.0 raises as a plain `C2paError("Remote: ...")`
+(its `RemoteManifest` subclass is for another prefix); every other `C2paError` is
+malformed. With an empty format c2pa sniffs the bytes itself: a GIF reads as no manifest,
+a BMP or ICO as unsupported (c2pa-rs 0.91.0).
+
+**The bytes settle absence only when the walk reaches the container's end.** A JPEG up to
+its image data, a PNG to IEND, a WebP to the size its RIFF header gives, every entry of a
+TIFF's first IFD, the top-level boxes of an ISOBMFF file filling it exactly. Measured
+2026-10-11 with a signed synthetic JPEG and one stray byte between two segments: Pillow and
+OpenCV opened it, c2pa-rs read its manifest (generative AI declared), and a walk that
+stopped at the byte had recorded "No Content Credentials". A walk cut short now leaves the
+file to the reader, or not_checked without one.
+
+**An ingredient's state is the reader's, not its signing tool's.** An ingredient carries
+the validation the tool that signed the parent recorded, against that tool's trust lists,
+and c2pa-rs 0.91.0 reports only how its own check differs, in `ingredientDeltas`, keyed by
+the manifest that holds the ingredient (so at any depth). Measured 2026-10-12 with a
+synthetic chain the signing tool trusted and GLEAPP did not: recorded
+`signingCredential.trusted`, delta `signingCredential.untrusted`, and the reverse when only
+GLEAPP trusted it; a delta's `signingCredential.trusted` explanation names the trust list
+("found in [gleapp:tsa:sha256:...] trust anchors"). A code found now replaces the
+recorded one it contradicts, and only that one: a recorded `signingCredential.expired`
+stays whatever trust is found.
 
 **Schema 19 adds four columns; NULL is "not read yet".** Processing reads what it processes
 and does not start reading an older case: on an E01 read in place that would pull every

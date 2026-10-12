@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from c2pafake import install_fake_c2pa  # pylint: disable=import-error
+from c2pafake import install_fake_c2pa, read_in_process  # pylint: disable=import-error
 from gleapp import __version__
 from gleapp import provenance as pv
 
@@ -303,15 +303,6 @@ def test_cawg_identity_results_do_not_decide_the_state():
     assert rec["state"] == "valid_untrusted"
 
 
-def test_without_validation_results_the_flat_status_list_decides():
-    store = _store(_manifest(ACTIVE, "digitalCapture"), None)
-    del store["validation_results"]
-    store["validation_status"] = [_code("assertion.dataHash.mismatch")]
-    rec = pv.parse_manifest_store(store)
-    assert rec["state"] == "invalid"
-    assert rec["hard_binding_mismatch"] is True
-
-
 def test_a_composite_synthetic_declaration_is_an_ai_composite():
     rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "compositeSynthetic",
                                                    action="c2pa.edited")))
@@ -581,15 +572,9 @@ def test_a_manifest_that_declares_no_action_says_none_declared():
     assert dict(pv.describe(rec))["Declared actions"] == "none declared"
 
 
-def test_a_record_read_before_actions_were_kept_does_not_read_as_none():
-    rec = _acting(ACTIONS)
-    del rec["actions"]
-    assert dict(pv.describe(rec))["Declared actions"] == (
-        "not recorded by the GLEAPP that read this file "
-        "(gleapp provenance --force reads it again)")
-    # a file with no manifest has no actions to speak of
+def test_a_file_with_no_manifest_has_no_actions_to_speak_of():
     assert "Declared actions" not in dict(pv.describe(
-        {"state": "absent", "active_dst": None, "dst_class": "none", "xmp_dst": None}))
+        {"state": "absent", "active_dst": None, "xmp_dst": None}))
 
 
 def test_the_actions_kept_are_bounded_and_the_rest_counted():
@@ -803,7 +788,7 @@ def test_a_container_walked_short_of_its_end_is_left_to_the_reader(tmp_path, fak
     p = tmp_path / "f.bin"
     p.write_bytes(make())
     assert pv.scan_blocks(p).known is False
-    pv.read_provenance(p)
+    read_in_process(p)
     assert len(lib.calls) == 1
 
 
@@ -814,7 +799,7 @@ def test_a_block_the_reader_does_not_take_for_a_store_is_reported_not_decided_on
     fake_c2pa(raises=lambda f: f.C2paError.ManifestNotFound("none"))
     p = tmp_path / "f.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rows = dict(pv.describe(pv.read_provenance(p)))
+    rows = dict(pv.describe(read_in_process(p)))
     assert rows["State"] == ("No Content Credentials: the c2pa reader found no manifest "
                              "store, though GLEAPP saw a block that carries C2PA in JPEG APP11")
     assert rows["C2PA block seen in"] == "JPEG APP11"
@@ -824,7 +809,7 @@ def test_a_record_says_when_and_with_what_it_was_read(tmp_path):
     """A result can change with time (a certificate expires), so each is dated."""
     p = tmp_path / "plain.jpg"
     p.write_bytes(_jpeg())
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["gleapp_version"] == __version__
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", rec["read_at"])
     assert dict(pv.describe(rec))["Read"] == f"{rec['read_at']}, GLEAPP {__version__}"
@@ -837,7 +822,7 @@ def test_a_segment_cut_short_leaves_the_decision_to_the_reader(tmp_path, fake_c2
     p = tmp_path / "t.jpg"
     p.write_bytes(_jpeg(_app11_store())[:30])
     assert pv.scan_blocks(p).known is False
-    assert pv.read_provenance(p)["state"] == "absent"
+    assert read_in_process(p)["state"] == "absent"
     assert len(lib.calls) == 1
 
 
@@ -852,7 +837,7 @@ def test_without_the_library_every_file_is_not_checked_and_says_why(tmp_path, mo
     monkeypatch.setitem(sys.modules, "c2pa", None)      # import c2pa raises ImportError
     p = tmp_path / "x.jpg"
     p.write_bytes(_jpeg(_app11_store(), _app1_xmp(DST + "trainedAlgorithmicMedia")))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"] == pv.NOT_CHECKED_LIBRARY
     assert rec["library_version"] is None
@@ -868,7 +853,7 @@ def test_a_file_with_no_store_is_absent_without_asking_the_library(tmp_path, fak
     lib = fake_c2pa(raises=lambda f: AssertionError("the reader must not be opened"))
     p = tmp_path / "plain.jpg"
     p.write_bytes(_jpeg())
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "absent"
     assert rec["state_reason"] == pv.ABSENT_BY_SCAN      # says how absence was found
     assert lib.calls == []
@@ -881,7 +866,7 @@ def test_without_the_library_a_file_with_no_store_is_still_absent(tmp_path, monk
     monkeypatch.setitem(sys.modules, "c2pa", None)
     p = tmp_path / "plain.jpg"
     p.write_bytes(_jpeg())
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "absent" and rec["state_reason"] == pv.ABSENT_BY_SCAN
 
 
@@ -889,7 +874,7 @@ def test_a_store_is_read_with_nothing_fetched_and_parsed(tmp_path, fake_c2pa):
     lib = fake_c2pa(store=_store(_manifest(ACTIVE, "trainedAlgorithmicMedia")))
     p = tmp_path / "g.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "valid_untrusted"
     assert rec["dst_class"] == "generative_ai"
     [(mime, settings)] = lib.calls
@@ -913,7 +898,7 @@ def test_the_trust_lists_used_are_recorded_and_the_one_that_vouched_named(tmp_pa
     lib = fake_c2pa(store=_store(_manifest(ACTIVE, "digitalCapture"), "Trusted", results))
     p = tmp_path / "g.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p, trust=trust)
+    rec = read_in_process(p, trust=trust)
     assert rec["state"] == "trusted"
     assert rec["trust_lists"] == trust.describe()
     assert [(d["label"], d["passed"]) for d in rec["trust_lists"]] == [
@@ -932,7 +917,7 @@ def test_a_signer_trusted_through_a_tsa_anchor_is_not_trusted(tmp_path, fake_c2p
     fake_c2pa(store=_store(_manifest(ACTIVE, "digitalCapture"), "Trusted", results))
     p = tmp_path / "g.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p, trust=pv.TrustLists((tsa,)))
+    rec = read_in_process(p, trust=pv.TrustLists((tsa,)))
     assert rec["state"] == "valid_untrusted"
     assert rec["trusted_by"] == "synthetic TSA list"
 
@@ -944,7 +929,7 @@ def test_a_remote_manifest_is_not_fetched(tmp_path, fake_c2pa):
            b'dcterms:provenance="https://example.invalid/manifest.c2pa"/></rdf:RDF></x:xmpmeta>')
     p = tmp_path / "r.jpg"
     p.write_bytes(_jpeg(_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + xmp)))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"] == pv.REMOTE_NOT_FETCHED
     assert rec["remote_url"] == "https://example.invalid/manifest.c2pa"
@@ -958,7 +943,7 @@ def test_a_remote_manifest_raised_as_a_plain_error_is_not_checked_with_its_addre
         "Remote: must fetch remote manifests from url https://example.invalid/m.c2pa"))
     p = tmp_path / "r.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"] == pv.REMOTE_NOT_FETCHED
     assert rec["remote_url"] == "https://example.invalid/m.c2pa"
@@ -971,7 +956,7 @@ def test_without_the_library_a_remote_address_is_still_recorded(tmp_path, monkey
            b'dcterms:provenance="https://example.invalid/manifest.c2pa"/></rdf:RDF></x:xmpmeta>')
     p = tmp_path / "r.jpg"
     p.write_bytes(_jpeg(_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + xmp)))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["remote_url"] == "https://example.invalid/manifest.c2pa"
 
@@ -981,7 +966,7 @@ def test_a_store_the_library_cannot_parse_is_malformed_and_names_no_path(tmp_pat
     p.parent.mkdir()
     fake_c2pa(raises=lambda f: f.C2paError(f"JumbfParseError in {p}"))
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "malformed"
     assert str(tmp_path) not in rec["state_reason"]
     assert "JumbfParseError" in rec["state_reason"]
@@ -999,7 +984,7 @@ def test_a_reader_failure_that_says_nothing_about_the_manifest_is_not_checked(
     fake_c2pa(raises=lambda f: getattr(f.C2paError, error)("synthetic"))
     p = tmp_path / "m.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"].startswith(reason)
 
@@ -1008,13 +993,13 @@ def test_any_other_reader_failure_is_not_checked(tmp_path, fake_c2pa):
     fake_c2pa(raises=lambda f: MemoryError("synthetic"))
     p = tmp_path / "m.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"].startswith("reader error: MemoryError")
 
 
 def test_a_file_that_cannot_be_opened_is_not_checked(tmp_path):
-    rec = pv.read_provenance(tmp_path / "gone.jpg")
+    rec = read_in_process(tmp_path / "gone.jpg")
     assert rec["state"] == "not_checked"
     assert rec["state_reason"].startswith("file could not be read")
     assert str(tmp_path) not in rec["state_reason"]
@@ -1026,7 +1011,7 @@ def test_the_file_is_never_written(tmp_path, fake_c2pa):
     data = _jpeg(_app11_store())
     p.write_bytes(data)
     stat = p.stat()
-    pv.read_provenance(p)
+    read_in_process(p)
     assert p.read_bytes() == data
     assert p.stat().st_mtime_ns == stat.st_mtime_ns
     assert sorted(x.name for x in tmp_path.iterdir()) == ["g.jpg"]
@@ -1047,7 +1032,7 @@ def test_a_c2pa_library_in_the_working_directory_is_refused(tmp_path, monkeypatc
     (tmp_path / name).write_bytes(b"not a library")
     p = tmp_path / "x.jpg"
     p.write_bytes(_jpeg(_app11_store()))
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     assert rec["state"] == "not_checked"
     assert rec["state_reason"] == pv.PLANTED
 

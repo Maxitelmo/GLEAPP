@@ -79,14 +79,6 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
-# The exclude keeps c2pa's code out, not its metadata: PyInstaller copies a
-# distribution's dist-info wherever the code asks importlib.metadata for it by a
-# literal name, and provenance.library_version() asks for "c2pa-python". Built with
-# the [provenance] extra installed, the bundle carried c2pa_python-0.38.0.dist-info,
-# a RECORD of files it does not hold (PyInstaller 6.22.2), so that is dropped too.
-_C2PA_METADATA = re.compile(r"^c2pa[_-]python-[^/\\]*\.dist-info([/\\]|$)", re.I)
-a.datas = [d for d in a.datas if not _C2PA_METADATA.match(str(d[0]))]
-
 # Refuse to build if a GPL-licensed codec would be bundled.
 #
 # The bundle also carries Apache-1.1 code (gleapp/vendor/impacket_ese.py), which the

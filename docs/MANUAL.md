@@ -2009,9 +2009,7 @@ in order, each with the source type and the software agent it names: a name and
 version, or the text an older manifest carries. They are transcribed as written and never
 classified, so an action GLEAPP has no word for, such as a vendor's own
 `com.example.provided`, is shown as it stands. The actions of a manifest that is not valid
-are marked **not backed by credentials that validate**. A manifest that declares none says **none declared**; a file read by
-a GLEAPP that did not keep actions says so instead, and `gleapp provenance --force`
-reads it again. They show in the details pane, the HTML report's Content Credentials
+are marked **not backed by credentials that validate**. A manifest that declares none says **none declared**. They show in the details pane, the HTML report's Content Credentials
 field and LAVA's Content Credentials Detail.
 
 ### What a state does not mean
@@ -2032,8 +2030,9 @@ include these lists and that the user should be able to add to them, so:
 - a **newer copy** of the C2PA Trust List or TSA list can stand in for the copy
   GLEAPP carries.
 
-Set them for every case in the app's config, or for one run on the command line
-(`--trust-anchors`, `--tsa-anchors`, `--c2pa-trust-list`, `--c2pa-tsa-trust-list`).
+Give them for a run of `gleapp provenance` on the command line (`--trust-anchors`,
+`--tsa-anchors`, `--c2pa-trust-list`, `--c2pa-tsa-trust-list`); processing and the
+gallery's button read with the lists GLEAPP carries.
 A list that cannot be read stops the reading with that reason; GLEAPP never falls back
 to another list silently. Each record lists the trust lists it was read with, by
 label and SHA-256 (never by the file's path on your machine), and for a signer on a

@@ -118,32 +118,6 @@ def set_show_intro(show: bool) -> None:
     save(cfg)
 
 
-_C2PA_TRUST_KEYS = ("c2pa_list", "c2pa_tsa_list", "signer_anchors", "tsa_anchors")
-
-
-def get_c2pa_trust_lists() -> dict:
-    """The PEM files the examiner set for reading Content Credentials, by path on this
-    machine: newer copies of the C2PA Trust List and C2PA TSA Trust List, and anchors
-    of their own that are added to those (``provenance.trust_lists``). None for each
-    one not set."""
-    stored = load().get("c2pa_trust") or {}
-    return {k: stored.get(k) if isinstance(stored.get(k), str) else None
-            for k in _C2PA_TRUST_KEYS}
-
-
-def set_c2pa_trust_lists(*, c2pa_list: str | None = None, c2pa_tsa_list: str | None = None,
-                         signer_anchors: str | None = None,
-                         tsa_anchors: str | None = None) -> None:
-    cfg = load()
-    given = dict(zip(_C2PA_TRUST_KEYS, (c2pa_list, c2pa_tsa_list, signer_anchors, tsa_anchors)))
-    kept = {k: str(v) for k, v in given.items() if v}
-    if kept:
-        cfg["c2pa_trust"] = kept
-    else:
-        cfg.pop("c2pa_trust", None)
-    save(cfg)
-
-
 def _case_summary(case_dir: Path) -> dict | None:
     """(files, name) for a case dir, or None if it isn't a real GLEAPP case."""
     db = case_dir / "case.gleapp"

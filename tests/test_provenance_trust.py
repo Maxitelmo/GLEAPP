@@ -21,8 +21,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from c2pafake import install_fake_c2pa  # pylint: disable=import-error
-from gleapp import appconfig
+from c2pafake import install_fake_c2pa, read_in_process  # pylint: disable=import-error
 from gleapp import provenance as pv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,12 +36,6 @@ PINNED = {
 }
 SIGNERS = PINNED["C2PA-TRUST-LIST.pem"][0]
 TSAS = PINNED["C2PA-TSA-TRUST-LIST.pem"][0]
-
-
-@pytest.fixture(autouse=True)
-def _isolate_appconfig(tmp_path_factory, monkeypatch):
-    """The trust lists set here must not reach another test's reads."""
-    monkeypatch.setenv("GLEAPP_CONFIG_DIR", str(tmp_path_factory.mktemp("gleapp-cfg")))
 
 
 def _jpeg_with_store() -> bytes:
@@ -101,7 +94,7 @@ def test_the_wheel_and_the_frozen_build_carry_them():
 
 
 def test_the_bundled_lists_load_and_say_where_they_came_from():
-    trust = pv.bundled_trust_lists()
+    trust = pv.trust_lists()
     assert _shas(trust) == [("manifest", SIGNERS), ("tsa", TSAS)]
     assert [a.label for a in trust.anchors] == [
         "C2PA Trust List (bundled, conformance-public 43a0a6f)",
@@ -141,24 +134,6 @@ def test_a_file_that_holds_no_certificate_is_refused(tmp_path):
     assert str(tmp_path) not in str(err.value)
 
 
-def test_the_examiner_lists_are_kept_in_the_app_config(tmp_path):
-    empty = {"c2pa_list": None, "c2pa_tsa_list": None, "signer_anchors": None,
-             "tsa_anchors": None}
-    assert appconfig.get_c2pa_trust_lists() == empty
-    p = _pem(tmp_path, "lab-ca.pem")
-    appconfig.set_c2pa_trust_lists(signer_anchors=str(p))
-    assert appconfig.get_c2pa_trust_lists() == dict(empty, signer_anchors=str(p))
-    assert pv.configured_trust_lists().anchors[-1].pem == p.read_bytes()
-    appconfig.set_c2pa_trust_lists()
-    assert appconfig.get_c2pa_trust_lists() == empty
-    assert _shas(pv.configured_trust_lists()) == [("manifest", SIGNERS), ("tsa", TSAS)]
-
-
-def test_the_app_config_refuses_a_key_it_does_not_know():
-    with pytest.raises(TypeError):
-        appconfig.set_c2pa_trust_lists(replace_everything="x.pem")  # pylint: disable=unexpected-keyword-arg
-
-
 # -- what a record says ---------------------------------------------------------------
 
 def _ders(pem) -> list[bytes]:
@@ -172,13 +147,13 @@ def _block(name: bytes) -> bytes:
             + b"\n-----END CERTIFICATE-----\n")
 
 
-def test_a_file_is_read_with_the_configured_lists_and_says_which(tmp_path, monkeypatch):
+def test_a_file_is_read_with_the_lists_gleapp_carries_and_says_which(tmp_path, monkeypatch):
     """16 roots are on both C2PA lists. The signer list reaches the reader as published;
     the TSA list without the certificates the signer list already carries."""
     lib = install_fake_c2pa(monkeypatch, raises=lambda f: f.C2paError.ManifestNotFound("none"))
     p = tmp_path / "a.jpg"
     p.write_bytes(_jpeg_with_store())
-    rec = pv.read_provenance(p)
+    rec = read_in_process(p)
     anchors = lib.settings[0]["trust"]["anchors"]
     assert [a["trust_kind"] for a in anchors] == ["manifest", "tsa"]
     assert hashlib.sha256(anchors[0]["trust_anchors"].encode()).hexdigest() == SIGNERS
@@ -214,7 +189,7 @@ def test_a_certificate_on_two_lists_reaches_the_reader_on_one(tmp_path, monkeypa
     lab_tsa = pv.Anchor("tsa", three + four, "examiner TSA anchors")
     p = tmp_path / "a.jpg"
     p.write_bytes(_jpeg_with_store())
-    rec = pv.read_provenance(p, trust=pv.TrustLists((signers, tsas, lab, repeat, lab_tsa)))
+    rec = read_in_process(p, trust=pv.TrustLists((signers, tsas, lab, repeat, lab_tsa)))
     sent = {a["trust_uri"]: _ders(a["trust_anchors"])
             for a in lib.settings[0]["trust"]["anchors"]}
     assert sent == {signers.uri: [b"one", b"two"], tsas.uri: [b"three"],
@@ -229,7 +204,7 @@ def test_a_certificate_on_two_lists_reaches_the_reader_on_one(tmp_path, monkeypa
 
 
 def test_a_trusted_record_names_the_list_the_signer_chained_to(tmp_path, monkeypatch):
-    trust = pv.bundled_trust_lists()
+    trust = pv.trust_lists()
     label = "urn:c2pa:00000000-0000-4000-8000-00000000000a"
     store = {"active_manifest": label, "validation_state": "Trusted",
              "manifests": {label: {"label": label, "assertions": [],
@@ -242,7 +217,7 @@ def test_a_trusted_record_names_the_list_the_signer_chained_to(tmp_path, monkeyp
     install_fake_c2pa(monkeypatch, store=store)
     p = tmp_path / "a.jpg"
     p.write_bytes(_jpeg_with_store())
-    rec = pv.read_provenance(p, trust=trust)
+    rec = read_in_process(p, trust=trust)
     assert rec["state"] == "trusted"
     assert rec["trusted_by"] == "C2PA Trust List (bundled, conformance-public 43a0a6f)"
     assert rec["trust_list_sha256"] == SIGNERS
@@ -251,30 +226,7 @@ def test_a_trusted_record_names_the_list_the_signer_chained_to(tmp_path, monkeyp
         ("C2PA TSA Trust List (bundled, conformance-public 43a0a6f)", TSAS)]
 
 
-def test_a_configured_list_that_cannot_be_read_is_reported_never_swapped(tmp_path, monkeypatch):
-    """Falling back to the bundled list would record a result the examiner did not
-    ask for; the file is not read at all instead, and the record says why."""
-    lib = install_fake_c2pa(monkeypatch, raises=lambda f: AssertionError("must not be read"))
-    appconfig.set_c2pa_trust_lists(signer_anchors=str(tmp_path / "gone.pem"))
-    p = tmp_path / "a.jpg"
-    p.write_bytes(_jpeg_with_store())
-    rec = pv.read_provenance(p)
-    assert rec["state"] == "not_checked"
-    assert rec["state_reason"].startswith(pv.TRUST_UNREADABLE)
-    assert "gone.pem" in rec["state_reason"]
-    assert str(tmp_path) not in rec["state_reason"]
-    assert lib.calls == []
-
-
-def test_a_file_with_no_store_is_absent_whatever_the_trust_lists(tmp_path, monkeypatch):
-    install_fake_c2pa(monkeypatch, raises=lambda f: AssertionError("must not be read"))
-    appconfig.set_c2pa_trust_lists(signer_anchors=str(tmp_path / "gone.pem"))
-    p = tmp_path / "plain.jpg"
-    Image.new("RGB", (8, 8)).save(p, "JPEG")
-    assert pv.read_provenance(p)["state"] == "absent"
-
-
 def test_the_real_reader_accepts_the_bundled_lists():
     c2pa = pytest.importorskip("c2pa")
-    settings = c2pa.Settings.from_dict(pv.reader_settings(pv.bundled_trust_lists()))
+    settings = c2pa.Settings.from_dict(pv.reader_settings(pv.trust_lists()))
     c2pa.Context(settings=settings)

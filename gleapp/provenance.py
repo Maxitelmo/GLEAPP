@@ -163,11 +163,7 @@ RETIRED_TERMS = frozenset(("minorHumanEdits", "digitalArt", "softwareImage"))
 # worked out again once per value of this (``CaseDB.refresh_dst_classes``), so **a
 # build that moves a term to another class has to raise it**, or every case an older
 # build read keeps the older class in the column the filter and the list read.
-DST_VOCABULARY = 4       # 2: virtualRecording left "Composite with AI"
-                         # 3: composite, compositeCapture, algorithmicallyEnhanced
-                         #    left "Human edits"
-                         # 4: compositeWithTrainedAlgorithmicMedia left it for
-                         #    "Edited using Generative AI"
+DST_VOCABULARY = 1
 
 # The codes C2PA's Asset Rubrics v1.0 (C2PA Conformance Task Force, 2026-08-06,
 # conformance-public asset-rubrics/asset-rubric-integrity.yml, CC BY 4.0) treat as
@@ -249,17 +245,6 @@ def _codes(block: Any) -> dict[str, list[dict]]:
                 if item.get("explanation"):
                     entry["explanation"] = _clip(item["explanation"])
                 out[kind].append(entry)
-    return out
-
-
-def _codes_from_status(status: Any) -> dict[str, list[dict]]:
-    """``validation_status`` (a flat list) when ``validation_results`` is missing:
-    every entry there is a problem, so each one is a failure."""
-    out: dict[str, list[dict]] = {"success": [], "informational": [], "failure": []}
-    for item in status or []:
-        if isinstance(item, dict) and item.get("code"):
-            out["failure"].append({"code": str(item["code"]),
-                                   "explanation": _clip(item.get("explanation") or "")})
     return out
 
 
@@ -486,9 +471,7 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
     if not isinstance(manifest, dict):
         return {"state": "malformed", "state_reason": "no active manifest in the store",
                 "codes": _codes(None), "ingredients": []}
-    active = results.get("activeManifest")
-    codes = _codes(active) if active is not None else _codes_from_status(
-        store.get("validation_status"))
+    codes = _codes(results.get("activeManifest"))
     own = [c["code"] for c in codes["failure"]]
     failures = list(own)
     for delta in results.get("ingredientDeltas") or []:
@@ -1011,12 +994,6 @@ def _bundled() -> dict[str, Anchor]:
             for f in manifest["files"]}
 
 
-def bundled_trust_lists() -> TrustLists:
-    """The C2PA Trust List and C2PA TSA Trust List GLEAPP carries (gleapp/trust)."""
-    b = _bundled()
-    return TrustLists((b["manifest"], b["tsa"]))
-
-
 def trust_lists(*, c2pa_list: str | Path | None = None, c2pa_tsa_list: str | Path | None = None,
                 signer_anchors: str | Path | None = None,
                 tsa_anchors: str | Path | None = None) -> TrustLists:
@@ -1026,7 +1003,8 @@ def trust_lists(*, c2pa_list: str | Path | None = None, c2pa_tsa_list: str | Pat
     ``tsa_anchors``) are added to C2PA's, never put in their place; what can be put
     in place of the copies GLEAPP carries is a newer copy of C2PA's own lists
     (``c2pa_list``, ``c2pa_tsa_list``). Each is named by its file name, never its
-    path, and every one has to hold a PEM certificate."""
+    path, and every one has to hold a PEM certificate. With nothing given, the two
+    lists GLEAPP carries."""
     b = _bundled()
     anchors = []
     for kind, given, name in (("manifest", c2pa_list, "C2PA Trust List"),
@@ -1041,12 +1019,6 @@ def trust_lists(*, c2pa_list: str | Path | None = None, c2pa_tsa_list: str | Pat
         if given:
             anchors.append(Anchor(kind, _pem_file(given, name), f"{name}: {Path(given).name}"))
     return TrustLists(tuple(anchors))
-
-
-def configured_trust_lists() -> TrustLists:
-    """The anchors the examiner set in the app config, or the bundled lists."""
-    from . import appconfig  # pylint: disable=import-outside-toplevel
-    return trust_lists(**appconfig.get_c2pa_trust_lists())
 
 
 # The extended key usages c2pa-rs accepts on a signing certificate when it builds its
@@ -1132,22 +1104,16 @@ def _library():
     return c2pa, None
 
 
-def library_version() -> str | None:
-    """'c2pa-python X / c2pa-rs Y' when the library can be used, else None."""
-    c2pa, _why = _library()
-    if c2pa is None:
-        return None
-    from importlib import metadata  # pylint: disable=import-outside-toplevel
-    try:
-        py = metadata.version("c2pa-python")
-    except metadata.PackageNotFoundError:
-        py = "unknown"
+def _version(c2pa: Any) -> str:
+    """'c2pa-python X / c2pa-rs Y' for the loaded library. X is the package's own
+    ``__version__``: a distribution named to importlib.metadata has its metadata copied
+    by PyInstaller into a build that leaves the package itself out."""
     try:
         rs = c2pa.sdk_version()
     # pylint: disable-next=broad-exception-caught
     except Exception:  # noqa: BLE001
         rs = "unknown"
-    return f"c2pa-python {py} / c2pa-rs {rs}"
+    return f"c2pa-python {getattr(c2pa, '__version__', 'unknown')} / c2pa-rs {rs}"
 
 
 def _scrub(text: str, path: str) -> str:
@@ -1217,7 +1183,7 @@ def read_outcome(path: str, mime: str, settings: dict) -> dict:
     c2pa, why = _library()
     if c2pa is None:
         return {"kind": "unavailable", "reason": why}
-    version = library_version()
+    version = _version(c2pa)
     try:
         ctx = c2pa.Context(settings=c2pa.Settings.from_dict(settings))
         with open(path, "rb") as fh:
@@ -1283,33 +1249,9 @@ def finish(record: dict, request: dict, outcome: dict, trust: TrustLists) -> dic
     return record
 
 
-def _resolve(trust: TrustLists | None) -> TrustLists:
-    return configured_trust_lists() if trust is None else trust
-
-
-def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dict:
-    """The provenance record of one file, JSON-serializable, read in this process.
-    Never writes to ``path``. ``trust`` defaults to ``configured_trust_lists()``;
-    pass ``TrustLists()`` to read with no anchors at all. ``read_batch`` reads many
-    files with the reader in a child process instead."""
-    record, request = prescan(path)
-    if request is None:
-        return record
-    try:
-        trust = _resolve(trust)
-    except TrustListError as exc:
-        # reading with the bundled lists instead would record a result the
-        # examiner did not ask for
-        record["state_reason"] = TRUST_UNREADABLE + _scrub(str(exc), str(path))
-        return record
-    outcome = read_outcome(request["path"], request["mime"], reader_settings(trust))
-    return finish(record, request, outcome, trust)
-
-
-TRUST_UNREADABLE = "a trust list could not be read: "
-
-
 # -- many files: the reader in a child process ----------------------------------------
+
+_READER_TIMEOUT = 600      # seconds one reader process may take over its batch
 
 def worker_command() -> list[str]:
     from .workers import worker_command as _command  # pylint: disable=import-outside-toplevel
@@ -1353,19 +1295,16 @@ def _run_reader(requests: list[dict], settings: dict, *, timeout: int, depth: in
     return out
 
 
-def read_batch(paths: Iterable[str | Path], *, trust: TrustLists | None = None,
-               timeout: int = 600) -> dict[str, dict]:
-    """{path: record} for many files, with the c2pa reader in a child process.
-    Raises TrustListError, before anything is read, when a configured list cannot
-    be read."""
+def read_batch(paths: Iterable[str | Path], *, trust: TrustLists) -> dict[str, dict]:
+    """{path: record} for many files, read with ``trust``, the c2pa reader in a child
+    process of its own. Never writes to a file."""
     paths = [str(p) for p in paths]
     pre = {p: prescan(p) for p in paths}
     requests = [req for _rec, req in pre.values() if req is not None]
     out = {p: rec for p, (rec, req) in pre.items() if req is None}
     if not requests:
         return out
-    trust = _resolve(trust)
-    outcomes = _run_reader(requests, reader_settings(trust), timeout=timeout)
+    outcomes = _run_reader(requests, reader_settings(trust), timeout=_READER_TIMEOUT)
     for req in requests:
         rec, _req = pre[req["path"]]
         out[req["path"]] = finish(rec, req, outcomes.get(req["path"], {"kind": "crashed"}),
@@ -1436,13 +1375,10 @@ def _actions_text(record: dict) -> str | None:
     """The declared actions, one a line, as the manifest names them, each with the
     source type and software agent it declares; None when the record has no manifest
     to declare any."""
-    if "actions" not in record:
-        # read by a GLEAPP that did not keep them: not the same as none declared
-        return ("not recorded by the GLEAPP that read this file "
-                "(gleapp provenance --force reads it again)"
-                if record.get("active_manifest") else None)
+    if not record.get("active_manifest"):
+        return None
     lines = []
-    for a in record["actions"] or []:
+    for a in record.get("actions") or []:
         if not isinstance(a, dict):
             continue
         line = a.get("action") or "(no action named)"

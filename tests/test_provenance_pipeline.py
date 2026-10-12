@@ -233,21 +233,6 @@ def test_the_pass_reads_a_zip_in_place_and_never_writes_to_it(tmp_path, monkeypa
         case.close()
 
 
-def test_a_trust_list_that_cannot_be_read_stops_the_pass_and_leaves_rows_unread(
-        tmp_path, monkeypatch):
-    from gleapp import appconfig  # pylint: disable=import-outside-toplevel
-    case = _old_case(tmp_path, monkeypatch)
-    monkeypatch.delitem(sys.modules, "c2pa")
-    monkeypatch.setattr(pv, "library_available", lambda: (True, None))
-    appconfig.set_c2pa_trust_lists(signer_anchors=str(tmp_path / "gone.pem"))
-    try:
-        with pytest.raises(pv.TrustListError):
-            provenance_pass(case)
-        assert _rows(case)["stub.jpg"]["c2pa_state"] is None
-    finally:
-        case.close()
-
-
 # -- the reader process ---------------------------------------------------------------
 
 def test_signed_files_are_read_by_the_reader_process_during_processing(tmp_path):

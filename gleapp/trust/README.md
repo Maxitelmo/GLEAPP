@@ -30,8 +30,8 @@ changed.
 The same sections say a validator should let the user add anchors of their own. So the
 examiner's anchors are **added** to these lists, never put in their place, and the only
 thing that can stand in for a copy here is a newer copy of the same C2PA list. Both are
-set in the app config (`appconfig.set_c2pa_trust_lists`) or for one run on the command
-line. Every record lists the anchors it was read with, by label and SHA-256 and never
+given for a run of `gleapp provenance` on the command line; the gallery reads with these
+lists alone. Every record lists the anchors it was read with, by label and SHA-256 and never
 by the file's path on the examiner's machine, and names the one a listed signer
 chained to (`trusted_by`), which the reader reports as the list's `trust_uri`.
 

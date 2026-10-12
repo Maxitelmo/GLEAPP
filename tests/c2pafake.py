@@ -12,7 +12,7 @@ import types
 
 
 class FakeC2pa(types.ModuleType):
-    """The surface of c2pa-python 0.38.0 that read_provenance uses."""
+    """The surface of c2pa-python 0.38.0 that gleapp.provenance.read_outcome uses."""
 
     def __init__(self, *, store=None, raises=None):
         super().__init__("c2pa")
@@ -70,6 +70,19 @@ class FakeC2pa(types.ModuleType):
     @staticmethod
     def sdk_version():
         return "0.0.0-standin"
+
+
+def read_in_process(path, trust=None) -> dict:
+    """One file read the way the reader process reads it, but in this process, so the
+    stand-in a test installed is the library used. ``trust`` defaults to the lists
+    GLEAPP carries."""
+    from gleapp import provenance as pv  # pylint: disable=import-outside-toplevel
+    record, request = pv.prescan(path)
+    if request is None:
+        return record
+    trust = pv.trust_lists() if trust is None else trust
+    outcome = pv.read_outcome(request["path"], request["mime"], pv.reader_settings(trust))
+    return pv.finish(record, request, outcome, trust)
 
 
 def install_fake_c2pa(monkeypatch, **kw) -> FakeC2pa:

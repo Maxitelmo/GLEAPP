@@ -41,24 +41,15 @@ def test_the_frozen_build_excludes_it():
     assert '"c2pa"' in excludes
 
 
-def test_the_frozen_build_drops_its_metadata_too():
-    """The exclude keeps the code out, not the dist-info: PyInstaller copies it
-    because provenance.library_version() asks importlib.metadata for "c2pa-python"
-    by name, and a build beside the extra carried c2pa_python-0.38.0.dist-info."""
-    spec = _text("packaging", "gleapp.spec")
-    found = re.search(r'^_C2PA_METADATA = re\.compile\(r"(.+?)", re\.I\)$', spec, re.M)
-    assert found, "the spec does not drop c2pa-python's metadata"
-    metadata = re.compile(found.group(1), re.I)
-    for dest in ("c2pa_python-0.38.0.dist-info", "c2pa_python-0.38.0.dist-info/RECORD",
-                 "c2pa_python-0.38.0.dist-info\\METADATA", "C2PA_Python-1.0.dist-info/WHEEL"):
-        assert metadata.match(dest), dest
-    for dest in ("gleapp/trust/LICENSE-c2pa-trust-lists", "gleapp/trust/C2PA-TRUST-LIST.pem",
-                 "c2pa_pythonic-1.0.dist-info/METADATA", "x/c2pa_python-0.38.0.dist-info/RECORD"):
-        assert not metadata.match(dest), dest
-    assert re.search(r"^a\.datas = \[d for d in a\.datas if not _C2PA_METADATA\.match\(",
-                     spec, re.M)
-    # what puts it there: if this call goes, so can the filter
-    assert 'metadata.version("c2pa-python")' in _text("gleapp", "provenance.py")
+def test_the_code_never_names_the_distribution_to_importlib_metadata():
+    """PyInstaller copies the dist-info of a distribution the code names to
+    importlib.metadata, whether or not the package is excluded: a build beside the
+    extra carried c2pa_python-0.38.0.dist-info, a RECORD of files it did not hold
+    (PyInstaller 6.22.2). The version is read from the package instead."""
+    code = _text("gleapp", "provenance.py")
+    assert not re.search(r"^\s*(from importlib import metadata|import importlib\.metadata"
+                         r"|from importlib\.metadata import)", code, re.M)
+    assert not re.search(r"\bmetadata\.(version|distribution|metadata|files|requires)\(", code)
 
 
 def test_ci_runs_the_suite_with_the_library_and_without_it():

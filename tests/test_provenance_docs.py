@@ -70,7 +70,7 @@ def test_both_manuals_describe_the_declared_actions():
     for doc in (_flat(_manual()), plain):
         assert "Declared actions" in doc
         assert "transcribed as written" in doc
-        assert "gleapp provenance --force" in doc
+        assert "with the source type and the software agent it names" in doc
 
 
 ABSENCE = ("An edit made with AI can leave no AI declaration in the file's metadata: no "

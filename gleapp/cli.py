@@ -580,11 +580,10 @@ def cmd_provenance(args: argparse.Namespace) -> int:
     from . import provenance
     from .pipeline import provenance_pass
 
-    given = {"c2pa_list": args.c2pa_trust_list, "c2pa_tsa_list": args.c2pa_tsa_trust_list,
-             "signer_anchors": args.trust_anchors, "tsa_anchors": args.tsa_anchors}
-    # lists given here are for this run; otherwise the ones set in the app
-    trust = (provenance.trust_lists(**given) if any(given.values())
-             else provenance.configured_trust_lists())
+    # the lists GLEAPP carries, with what is given here for this run
+    trust = provenance.trust_lists(
+        c2pa_list=args.c2pa_trust_list, c2pa_tsa_list=args.c2pa_tsa_trust_list,
+        signer_anchors=args.trust_anchors, tsa_anchors=args.tsa_anchors)
     case = open_case(args.case, examiner=args.examiner)
     _p("Reading Content Credentials (metadata only, nothing is fetched)…")
 
