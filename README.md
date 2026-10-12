@@ -783,7 +783,7 @@ four MIT and vendored under `gleapp/vendor/`. GLEAPP is part of the **LEAPP** fa
 (ALEAPP / iLEAPP / RLEAPP …), the project started by Alexis Brignoni &
 contributors, and its Android storage-view table is ported from ALEAPP. It
 reads the **Project VIC** data model and the **NSRL RDS** (NIST). Full
-attributions and licenses: **section 20 of the manual** (`docs/MANUAL.md`, or
+attributions and licenses: **section 21 of the manual** (`docs/MANUAL.md`, or
 **? Help** in the app).
 
 ## License
