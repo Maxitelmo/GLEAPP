@@ -70,6 +70,34 @@ def test_a_generated_picture_by_an_unlisted_signer_is_valid_untrusted(tmp_path, 
     assert rec["trusted_by"] is None and rec["trust_list_sha256"] is None
 
 
+def test_a_stray_byte_before_the_store_does_not_hide_it(tmp_path, chain):
+    """One byte between two segments stops a walk of the JPEG, which Pillow and OpenCV
+    shrug off. c2pa-rs still reads the manifest past it, so the file is the reader's
+    to settle; it was recorded "No Content Credentials" from the bytes."""
+    signed = sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia"))
+    at = signed.index(b"\xff\xeb")                     # the APP11 segment of the store
+    rec = _read(_write(tmp_path, "padded.jpg", signed[:at] + b"\x00" + signed[at:]))
+    assert rec["state"] not in ("absent", "not_checked")
+    assert rec["active_dst"] == DST + "trainedAlgorithmicMedia"
+
+
+def test_an_ingredient_trusted_by_its_signing_tool_is_not_listed_by_gleapp(
+        tmp_path, chain, monkeypatch):
+    """The tool that signed the parent trusted the ingredient's signer; GLEAPP reads
+    with no anchor at all, so the ingredient is valid and on no list GLEAPP holds."""
+    import c2pasign  # pylint: disable=import-error,import-outside-toplevel
+    _signer, ca_pem = chain
+    monkeypatch.setitem(c2pasign._SIGN_SETTINGS, "trust", {  # pylint: disable=protected-access
+        "trust_config": "1.3.6.1.4.1.62558.2.1\n", "trust_anchors": ca_pem.decode()})
+    generated = sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia"))
+    opened = [{"action": "c2pa.opened", "parameters": {"ingredientIds": ["ingredient-1"]}}]
+    edited = sign(chain, _picture(), "image/jpeg", opened, ingredient=generated)
+    rec = _read(_write(tmp_path, "edited.jpg", edited), trust=pv.TrustLists())
+    assert rec["ingredients"][0]["state"] == "valid_untrusted"
+    assert pv.ai_declaration(rec)["title"].endswith(
+        "Valid, signer not on a trust list. " + pv.DECLARATION_NOTE)
+
+
 def test_a_changed_byte_breaks_the_hard_binding(tmp_path, chain):
     signed = bytearray(sign(chain, _picture(), "image/jpeg", created("trainedAlgorithmicMedia")))
     signed[-10] ^= 0xFF                       # inside the entropy-coded scan, before EOI
@@ -119,10 +147,12 @@ def test_the_declared_actions_are_transcribed_from_a_signed_file(tmp_path, chain
                {"action": "org.example.provided"}]
     rec = _read(_write(tmp_path, "acted.jpg", sign(chain, _picture(), "image/jpeg", actions)))
     assert rec["state"] == "valid_untrusted"
-    assert rec["actions"] == [{"action": "c2pa.created", "software_agent": "Synthetic Agent 2.1"},
+    assert rec["actions"] == [{"action": "c2pa.created", "dst": DST + "digitalCapture",
+                               "software_agent": "Synthetic Agent 2.1"},
                               {"action": "org.example.provided"}]
     assert dict(pv.describe(rec))["Declared actions"] == (
-        "c2pa.created (software agent: Synthetic Agent 2.1)\norg.example.provided")
+        "c2pa.created; source type: digitalCapture (Capture); "
+        "software agent: Synthetic Agent 2.1\norg.example.provided")
 
 
 def test_a_capture(tmp_path, chain):
@@ -184,8 +214,8 @@ def test_an_xmp_source_type_without_credentials_is_an_unsigned_declaration(tmp_p
     assert rec["xmp_dst"] == {"uri": DST + "trainedAlgorithmicMedia", "class": "generative_ai",
                               "label": "unsigned declaration",
                               "field": "XMP Iptc4xmpExt:DigitalSourceType"}
-    # kept apart from the C2PA fields, never folded into them
-    assert rec["active_dst"] is None and rec["dst_class"] == "none"
+    # kept apart from the C2PA fields, never folded into them; no manifest, no class
+    assert rec["active_dst"] is None and rec["dst_class"] is None
 
 
 def test_a_signer_on_an_examiner_list_is_trusted_and_the_list_named(tmp_path, chain):
@@ -287,8 +317,7 @@ def test_a_container_the_scan_does_not_walk_is_left_to_the_reader(tmp_path):
     assert gif["state_reason"] == pv.ABSENT_BY_READER
     bmp = _read(_write(tmp_path, "a.bmp", _picture("BMP")))
     assert bmp["state"] == "not_checked"
-    assert bmp["state_reason"].startswith(
-        "C2PA not checked: the c2pa reader does not support this format")
+    assert bmp["state_reason"] == pv.UNSUPPORTED
 
 
 def test_reading_never_writes_to_the_file(tmp_path, chain):

@@ -9,6 +9,7 @@ test_provenance_signed.py.
 
 import io
 import json
+import re
 import struct
 import sys
 import zlib
@@ -18,6 +19,7 @@ import pytest
 from PIL import Image
 
 from c2pafake import install_fake_c2pa  # pylint: disable=import-error
+from gleapp import __version__
 from gleapp import provenance as pv
 
 DST = "http://cv.iptc.org/newscodes/digitalsourcetype/"
@@ -176,14 +178,27 @@ def test_a_current_term_or_another_namespace_is_not_marked_retired():
                       "https://example.invalid/digitalsourcetype/minorHumanEdits")
     assert rows["Declared source type"] == "humanEdits (Human edits)"
     assert "retired" not in rows["Ingredients"]
-    assert rows["XMP source type"] == "minorHumanEdits (Other), unsigned declaration"
+    # a term of no known vocabulary is shown whole, so where it comes from shows
+    assert rows["XMP source type"] == ("https://example.invalid/digitalsourcetype/"
+                                       "minorHumanEdits (Other), unsigned declaration")
 
 
 def test_the_c2pa_namespace_terms_are_classified():
     assert pv.classify_dst("http://c2pa.org/digitalsourcetype/trainedAlgorithmicData") \
         == "generative_ai"
     assert pv.classify_dst("http://c2pa.org/digitalsourcetype/empty") == "other"
-    assert pv.classify_dst("c2pa.trainedAlgorithmicData") == "generative_ai"
+
+
+@pytest.mark.parametrize("uri", [
+    "https://example.invalid/x?cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+    "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia/extra",
+    "c2pa.trainedAlgorithmicData",
+    "trainedAlgorithmicMedia",
+])
+def test_only_a_whole_uri_of_the_vocabulary_is_a_term(uri):
+    """A URI that merely contains IPTC's namespace, a bare term, or a form no
+    vocabulary defines declares nothing GLEAPP can name, and is "Other"."""
+    assert pv.classify_dst(uri) == "other"
 
 
 def test_a_term_is_matched_on_its_whole_last_segment_only():
@@ -348,6 +363,83 @@ def test_an_ingredient_that_fails_now_is_invalid_even_if_it_validated_when_signe
     assert rec["ingredients"][0]["state"] == "invalid"
 
 
+def _delta(manifest_label, *, success=(), failure=()):
+    """An ingredientDeltas entry for the ingredient the manifest ``manifest_label`` holds."""
+    return {"ingredientAssertionURI":
+            f"self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/c2pa.ingredient.v3",
+            "validationDeltas": {"success": [_code(c, e) for c, e in success],
+                                 "informational": [], "failure": [_code(c) for c in failure]}}
+
+
+def test_an_ingredient_s_trust_is_the_reader_s_not_the_signing_tool_s():
+    """An ingredient carries the validation its signing tool recorded, against that
+    tool's trust lists, and c2pa-rs reports only how its own differs. A recorded
+    signingCredential.trusted read as "on a trust list" with no list GLEAPP holds
+    (measured with c2pa-rs 0.91.0); the current untrusted replaces it."""
+    child = _manifest(CHILD, "trainedAlgorithmicMedia")
+    ing = _ingredient(CHILD)
+    ing["validation_results"]["activeManifest"]["success"].append(
+        _code("signingCredential.trusted"))
+    parent = _manifest(ACTIVE, ingredients=[ing])
+    rec = pv.parse_manifest_store(_store(parent, "Valid", _results(
+        failure=["signingCredential.untrusted"],
+        deltas=[_delta(ACTIVE, failure=["signingCredential.untrusted"])]), others=[child]))
+    assert rec["ingredients"][0]["state"] == "valid_untrusted"
+    assert pv.ai_declaration(rec)["title"].endswith(
+        "; Valid, signer not on a trust list. " + pv.DECLARATION_NOTE)
+
+
+def test_a_trust_found_now_leaves_a_recorded_failure_of_another_kind_standing():
+    """Trusted now replaces untrusted recorded, and nothing else: an expired signing
+    credential the tool recorded keeps the ingredient invalid."""
+    child = _manifest(CHILD, "trainedAlgorithmicMedia")
+    ing = _ingredient(CHILD, failure=["signingCredential.expired"])
+    parent = _manifest(ACTIVE, ingredients=[ing])
+    found = "signing certificate trusted, found in [gleapp:manifest:sha256:00] trust anchors"
+    rec = pv.parse_manifest_store(_store(parent, "Invalid", _results(
+        failure=["signingCredential.untrusted"],
+        deltas=[_delta(ACTIVE, success=[("signingCredential.trusted", found)])]),
+        others=[child]))
+    assert rec["ingredients"][0]["state"] == "invalid"
+    assert rec["ingredients"][0]["failures"] == ["signingCredential.expired"]
+
+
+@pytest.mark.parametrize("kind, state", [("manifest", "trusted"), ("tsa", "valid_untrusted")])
+def test_an_ingredient_trusted_now_is_trusted_on_the_list_the_reader_names(kind, state):
+    """The trust the reader finds now is in the delta, with the list it chained to:
+    a signer list makes it trusted, the TSA list does not vouch for signers."""
+    uri = f"gleapp:{kind}:sha256:" + "0" * 64
+    child = _manifest(CHILD, "trainedAlgorithmicMedia")
+    parent = _manifest(ACTIVE, ingredients=[_ingredient(CHILD)])
+    found = f"signing certificate trusted, found in [{uri}] trust anchors"
+    rec = pv.parse_manifest_store(_store(parent, "Valid", _results(
+        failure=["signingCredential.untrusted"],
+        deltas=[_delta(ACTIVE, success=[("signingCredential.trusted", found)])]),
+        others=[child]), tsa_uris=[uri] if kind == "tsa" else [])
+    assert rec["ingredients"][0]["state"] == state
+
+
+def test_an_ingredient_s_failures_are_shown_against_the_ingredient():
+    """A store that fails only in an ingredient: the failures go with the ingredient,
+    the active manifest's own binding is not said to mismatch, and the state says why."""
+    child = _manifest(CHILD, "digitalCapture")
+    parent = _manifest(ACTIVE, ingredients=[_ingredient(CHILD)])
+    rec = pv.parse_manifest_store(_store(parent, "Invalid", _results(
+        failure=["signingCredential.untrusted"],
+        deltas=[_delta(ACTIVE, failure=["assertion.dataHash.mismatch",
+                                        "claimSignature.mismatch"])]), others=[child]))
+    assert rec["state"] == "invalid"
+    assert rec["state_reason"] == "an ingredient does not validate (see Ingredients)"
+    assert rec["hard_binding_mismatch"] is False
+    rows = dict(pv.describe(rec))
+    assert "Hard binding" not in rows
+    # claimSignature.mismatch now replaces the claimSignature.validated recorded
+    assert rows["Ingredients"] == (
+        "ingredient.jpg: digitalCapture (Capture); Invalid; certificate Synthetic Signer "
+        "(Synthetic Test Org), signature not verified; failures: "
+        "assertion.dataHash.mismatch, claimSignature.mismatch")
+
+
 def test_an_ingredient_without_a_manifest_is_absent():
     parent = _manifest(ACTIVE, ingredients=[{"title": "plain.jpg", "relationship": "parentOf"}])
     rec = pv.parse_manifest_store(_store(parent))
@@ -423,7 +515,8 @@ def test_every_declared_action_is_transcribed_with_its_software_agent():
     returns. Each is written as declared; nothing is classified."""
     rec = _acting(ACTIONS, agents=AGENTS, more=[{"action": "c2pa.opened"}])
     assert rec["actions"] == [
-        {"action": "c2pa.created", "software_agent": "Synthetic Agent 2.1"},
+        {"action": "c2pa.created", "dst": DST + "digitalCapture",
+         "software_agent": "Synthetic Agent 2.1"},
         {"action": "org.example.provided", "software_agent": "Synthetic Tool 0.9"},
         {"action": "c2pa.edited", "software_agent": "Synthetic Indexed Agent 3.0"},
         {"action": "c2pa.opened"},
@@ -431,9 +524,10 @@ def test_every_declared_action_is_transcribed_with_its_software_agent():
     assert "actions_omitted" not in rec
     rows = dict(pv.describe(rec))
     assert rows["Declared actions"] == (
-        "c2pa.created (software agent: Synthetic Agent 2.1)\n"
-        "org.example.provided (software agent: Synthetic Tool 0.9)\n"
-        "c2pa.edited (software agent: Synthetic Indexed Agent 3.0)\n"
+        "c2pa.created; source type: digitalCapture (Capture); "
+        "software agent: Synthetic Agent 2.1\n"
+        "org.example.provided; software agent: Synthetic Tool 0.9\n"
+        "c2pa.edited; software agent: Synthetic Indexed Agent 3.0\n"
         "c2pa.opened")
 
 
@@ -448,8 +542,37 @@ def test_actions_from_a_manifest_that_is_not_valid_are_marked():
                   failure=("signingCredential.untrusted", "assertion.dataHash.mismatch"))
     assert rec["state"] == "invalid"
     assert dict(pv.describe(rec))["Declared actions"] == (
-        "not backed by a valid signature:\n"
-        "c2pa.created (software agent: Synthetic Agent 2.1)")
+        pv.NOT_BACKED + ":\n"
+        "c2pa.created; source type: digitalCapture (Capture); "
+        "software agent: Synthetic Agent 2.1")
+
+
+def test_generative_ai_declared_on_a_later_action_is_marked():
+    """The source type of the file is the c2pa.created action's; an edit made with
+    generative AI declared on c2pa.edited was neither shown nor marked."""
+    rec = _acting([{"action": "c2pa.created", "digitalSourceType": DST + "digitalCapture"},
+                   {"action": "c2pa.edited",
+                    "digitalSourceType": DST + "compositeWithTrainedAlgorithmicMedia"}])
+    assert rec["dst_class"] == "capture"
+    decl = pv.ai_declaration(rec)
+    assert decl["badge"] == "AI declared"
+    assert "on its c2pa.edited action: compositeWithTrainedAlgorithmicMedia" in decl["title"]
+    assert ("c2pa.edited; source type: compositeWithTrainedAlgorithmicMedia (Edited using "
+            "Generative AI)") in dict(pv.describe(rec))["Declared actions"]
+
+
+def test_a_long_text_is_kept_cut_and_marked():
+    rec = _acting([{"action": "org.example." + "x" * 400}])
+    kept = rec["actions"][0]["action"]
+    assert len(kept) == 300 and kept.endswith("…")
+
+
+def test_the_time_stamp_carries_the_validator_s_own_codes():
+    rec = pv.parse_manifest_store(_store(_manifest(ACTIVE, "digitalCapture"), "Valid", _results(
+        success=["timeStamp.validated"], failure=["signingCredential.untrusted"])))
+    rec["codes"]["informational"].append({"code": "timeStamp.untrusted"})
+    assert dict(pv.describe(rec))["Time-stamp"] == (
+        "2026-01-02T03:04:05+00:00 (timeStamp.validated, timeStamp.untrusted)")
 
 
 def test_a_manifest_that_declares_no_action_says_none_declared():
@@ -642,6 +765,71 @@ def test_tiff_c2pa_tag_and_xmp_tag(tmp_path):
     assert pv.xmp_declaration(blocks.xmp)["class"] == "screen"
 
 
+def _webp_claiming_more() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), "white").save(buf, "WEBP")
+    raw = bytearray(buf.getvalue())
+    raw[4:8] = struct.pack("<I", len(raw) - 8 + 64)       # 64 bytes more than there are
+    return bytes(raw)
+
+
+def _tiff_with_too_many_entries() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buf, "TIFF")
+    raw = bytearray(buf.getvalue())
+    ifd = struct.unpack("<I", raw[4:8])[0]               # Pillow writes little-endian
+    raw[ifd:ifd + 2] = struct.pack("<H", 0xFFFF)
+    return bytes(raw)
+
+
+WALKED_SHORT = {
+    # after a first segment, as measured: the file still opens as a JPEG
+    "jpeg, a stray byte where a marker must be": lambda: _jpeg(
+        _segment(0xE2, b"synthetic") + b"\x00" + _app11_store()),
+    "png, no IEND": lambda: _png()[:-12],
+    "webp, the RIFF longer than the file": _webp_claiming_more,
+    "tiff, more entries than an IFD holds": _tiff_with_too_many_entries,
+    "mp4, bytes past the last box": lambda: (_box(b"ftyp", b"isom" + bytes(4) + b"isom")
+                                             + _box(b"mdat", bytes(16)) + b"\x00\x00\x00"),
+}
+
+
+@pytest.mark.parametrize("make", WALKED_SHORT.values(), ids=WALKED_SHORT.keys())
+def test_a_container_walked_short_of_its_end_is_left_to_the_reader(tmp_path, fake_c2pa, make):
+    """A signed JPEG with one stray byte before its store was recorded "No Content
+    Credentials" from the bytes, while c2pa-rs read its manifest (Invalid, generative
+    AI declared). The walk settles absence only when it reaches the container's end."""
+    lib = fake_c2pa(raises=lambda f: f.C2paError.ManifestNotFound("none"))
+    p = tmp_path / "f.bin"
+    p.write_bytes(make())
+    assert pv.scan_blocks(p).known is False
+    pv.read_provenance(p)
+    assert len(lib.calls) == 1
+
+
+def test_a_block_the_reader_does_not_take_for_a_store_is_reported_not_decided_on(
+        tmp_path, fake_c2pa):
+    """GLEAPP's walk is not a reader: a block it took for C2PA that the reader finds no
+    store in is said, beside the reader's answer, and never called a manifest store."""
+    fake_c2pa(raises=lambda f: f.C2paError.ManifestNotFound("none"))
+    p = tmp_path / "f.jpg"
+    p.write_bytes(_jpeg(_app11_store()))
+    rows = dict(pv.describe(pv.read_provenance(p)))
+    assert rows["State"] == ("No Content Credentials: the c2pa reader found no manifest "
+                             "store, though GLEAPP saw a block that carries C2PA in JPEG APP11")
+    assert rows["C2PA block seen in"] == "JPEG APP11"
+
+
+def test_a_record_says_when_and_with_what_it_was_read(tmp_path):
+    """A result can change with time (a certificate expires), so each is dated."""
+    p = tmp_path / "plain.jpg"
+    p.write_bytes(_jpeg())
+    rec = pv.read_provenance(p)
+    assert rec["gleapp_version"] == __version__
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", rec["read_at"])
+    assert dict(pv.describe(rec))["Read"] == f"{rec['read_at']}, GLEAPP {__version__}"
+
+
 def test_a_segment_cut_short_leaves_the_decision_to_the_reader(tmp_path, fake_c2pa):
     """A file that ends inside a segment the scan reads cannot be called absent from
     the bytes: what was cut off may have been a store."""
@@ -666,7 +854,7 @@ def test_without_the_library_every_file_is_not_checked_and_says_why(tmp_path, mo
     p.write_bytes(_jpeg(_app11_store(), _app1_xmp(DST + "trainedAlgorithmicMedia")))
     rec = pv.read_provenance(p)
     assert rec["state"] == "not_checked"
-    assert rec["state_reason"] == "C2PA not checked: library unavailable"
+    assert rec["state_reason"] == pv.NOT_CHECKED_LIBRARY
     assert rec["library_version"] is None
     assert rec["store_in_bytes"] == "JPEG APP11"
     # the unsigned XMP declaration is still recorded, apart from the C2PA state
@@ -758,7 +946,33 @@ def test_a_remote_manifest_is_not_fetched(tmp_path, fake_c2pa):
     p.write_bytes(_jpeg(_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + xmp)))
     rec = pv.read_provenance(p)
     assert rec["state"] == "not_checked"
-    assert rec["state_reason"] == "remote manifest not fetched (offline)"
+    assert rec["state_reason"] == pv.REMOTE_NOT_FETCHED
+    assert rec["remote_url"] == "https://example.invalid/manifest.c2pa"
+
+
+def test_a_remote_manifest_raised_as_a_plain_error_is_not_checked_with_its_address(
+        tmp_path, fake_c2pa):
+    """c2pa-python 0.38.0 raises it as C2paError("Remote: ..."), not RemoteManifest;
+    it was recorded as malformed with the address cut to "http"."""
+    fake_c2pa(raises=lambda f: f.C2paError(
+        "Remote: must fetch remote manifests from url https://example.invalid/m.c2pa"))
+    p = tmp_path / "r.jpg"
+    p.write_bytes(_jpeg(_app11_store()))
+    rec = pv.read_provenance(p)
+    assert rec["state"] == "not_checked"
+    assert rec["state_reason"] == pv.REMOTE_NOT_FETCHED
+    assert rec["remote_url"] == "https://example.invalid/m.c2pa"
+
+
+def test_without_the_library_a_remote_address_is_still_recorded(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "c2pa", None)
+    xmp = (b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description '
+           b'xmlns:dcterms="http://purl.org/dc/terms/" '
+           b'dcterms:provenance="https://example.invalid/manifest.c2pa"/></rdf:RDF></x:xmpmeta>')
+    p = tmp_path / "r.jpg"
+    p.write_bytes(_jpeg(_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + xmp)))
+    rec = pv.read_provenance(p)
+    assert rec["state"] == "not_checked"
     assert rec["remote_url"] == "https://example.invalid/manifest.c2pa"
 
 
@@ -774,9 +988,9 @@ def test_a_store_the_library_cannot_parse_is_malformed_and_names_no_path(tmp_pat
 
 
 @pytest.mark.parametrize("error, reason", [
-    ("NotSupported", "C2PA not checked: the c2pa reader does not support this format"),
-    ("Io", "C2PA not checked: the c2pa reader could not read the file"),
-    ("FileNotFound", "C2PA not checked: the c2pa reader could not read the file"),
+    ("NotSupported", pv.UNSUPPORTED),
+    ("Io", pv.UNREADABLE),
+    ("FileNotFound", pv.UNREADABLE),
 ])
 def test_a_reader_failure_that_says_nothing_about_the_manifest_is_not_checked(
         tmp_path, fake_c2pa, error, reason):

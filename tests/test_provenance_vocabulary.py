@@ -67,7 +67,9 @@ def test_what_a_surface_shows_follows_the_uri():
     assert "trainedAlgorithmicMedia (Generative AI)" in text
     assert "a.jpg: digitalCapture (Capture)" in text
     assert "digitalCapture (Capture), unsigned declaration" in text
-    assert pv.xmp_text(pv.load(json.dumps(_stale_record()))).startswith("capture ")
+    # the export carries the URI the XMP declares, not a class of GLEAPP's
+    assert pv.xmp_text(pv.load(json.dumps(_stale_record()))) == (
+        DST + "digitalCapture (unsigned declaration)")
 
 
 def test_a_record_without_classes_loads_as_it_was():

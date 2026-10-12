@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -45,6 +46,8 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import Any, BinaryIO, Iterable
+
+from . import __version__
 
 STATES = ("absent", "malformed", "invalid", "valid_untrusted", "trusted", "not_checked")
 # "Trusted" on its own reads as content worth trusting, so neither valid state is
@@ -87,12 +90,16 @@ DST_CLASS_LABELS = {
     "virtual_recording": "Virtual event recording",
     "human_edit": "Human edits",
     "other": "Other",
-    "none": "None declared",
+    "none": "No source type in the manifest",
 }
 UNSIGNED = "unsigned declaration"
-NOT_CHECKED_LIBRARY = "C2PA not checked: library unavailable"
-REMOTE_NOT_FETCHED = "remote manifest not fetched (offline)"
-PLANTED = "C2PA not checked: a c2pa library sits in the working directory"
+# What a declaration from a manifest that does not validate is marked with, whatever
+# the cause: a signature, a hard binding or an ingredient (C2PA 2.2 §15.3).
+NOT_BACKED = "not backed by credentials that validate"
+# Why a file is not_checked. The screens print each after the state's own label.
+NOT_CHECKED_LIBRARY = "the c2pa library is not installed"
+REMOTE_NOT_FETCHED = "the manifest is kept at a remote address, which is not fetched"
+PLANTED = "a c2pa library sits in the working directory, so none is loaded"
 
 # Fixed wording for the report and the manual; see "What a state does not mean" there.
 CAVEAT = (
@@ -145,8 +152,9 @@ _DST_TERM_CLASS = {term: cls for cls, terms in _DST_GROUPS.items() for term in t
 # mark looks for (``ai_declaration``).
 AI_CLASSES = frozenset(("generative_ai", "ai_edited", "ai_composite"))
 AI_TERMS = tuple(term for cls in sorted(AI_CLASSES) for term in _DST_GROUPS[cls])
-_IPTC_NAMESPACE = "cv.iptc.org/newscodes/digitalsourcetype/"
-_DST_NAMESPACES = (_IPTC_NAMESPACE, "c2pa.org/digitalsourcetype/")
+# A term of either vocabulary, as the whole URI: the namespace (group 1) then the term.
+_DST_URI_FORM = re.compile(r"(?i:https?://(cv\.iptc\.org/newscodes|c2pa\.org)"
+                           r"/digitalsourcetype/)([A-Za-z]+)/?")
 # The terms IPTC has retired (release of 2024-10-23). A file can still declare
 # one, so each is read and keeps its class; wherever a term is shown, it says so.
 RETIRED_TERMS = frozenset(("minorHumanEdits", "digitalArt", "softwareImage"))
@@ -195,7 +203,9 @@ _TOLERATED_PREFIXES = ("cawg.x509.", "cawg.identity.")
 _TOLERATED = frozenset(("signingCredential.untrusted",))
 MAX_DEPTH = 8          # how deep ingredient manifests are followed
 MAX_ACTIONS = 64       # most declared actions kept per manifest; the rest are counted
-_MAX_TEXT = 300        # longest explanation or message kept per code
+_MAX_TEXT = 300        # longest explanation or message kept per code, then marked cut
+# The trust list c2pa-rs names in a signingCredential.trusted explanation.
+_LIST_IN_EXPLANATION = re.compile(r"\[([^\]\s]+)\]")
 
 _MAX_BLOCK = 32 * 1024 * 1024
 _XMP_SIG = b"http://ns.adobe.com/xap/1.0/\x00"
@@ -206,22 +216,27 @@ _HEIF_BRANDS = {b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1",
                 b"msf1", b"avif", b"avis", b"mif2"}
 
 
+def _dst_uri(uri: Any) -> re.Match | None:
+    """The URI split into namespace and term when it is a whole URI of IPTC's or
+    C2PA's vocabulary; None for anything else, a URI that merely contains one too."""
+    return _DST_URI_FORM.fullmatch(str(uri or "").strip())
+
+
 def classify_dst(uri: str | None) -> str:
     """The group of ``DST_CLASSES`` a digital source type URI belongs to."""
     if not uri:
         return "none"
-    text = str(uri).strip()
-    low = text.lower()
-    if low.startswith("c2pa."):          # the deprecated c2pa.trainedAlgorithmicData label
-        term = text[5:]
-    elif any(ns in low for ns in _DST_NAMESPACES):
-        term = text.rstrip("/").rsplit("/", 1)[-1]
-    else:
-        return "other"
-    return _DST_TERM_CLASS.get(term, "other")
+    found = _dst_uri(uri)
+    return _DST_TERM_CLASS.get(found.group(2), "other") if found else "other"
 
 
 # -- the manifest store, parsed (no I/O) ------------------------------------------------
+
+def _clip(text: Any) -> str:
+    """``text`` as a record keeps it: whole up to ``_MAX_TEXT``, else cut and marked."""
+    text = str(text)
+    return text if len(text) <= _MAX_TEXT else text[:_MAX_TEXT - 1] + "…"
+
 
 def _codes(block: Any) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {"success": [], "informational": [], "failure": []}
@@ -232,7 +247,7 @@ def _codes(block: Any) -> dict[str, list[dict]]:
             if isinstance(item, dict) and item.get("code"):
                 entry = {"code": str(item["code"])}
                 if item.get("explanation"):
-                    entry["explanation"] = str(item["explanation"])[:_MAX_TEXT]
+                    entry["explanation"] = _clip(item["explanation"])
                 out[kind].append(entry)
     return out
 
@@ -244,7 +259,7 @@ def _codes_from_status(status: Any) -> dict[str, list[dict]]:
     for item in status or []:
         if isinstance(item, dict) and item.get("code"):
             out["failure"].append({"code": str(item["code"]),
-                                   "explanation": str(item.get("explanation") or "")[:_MAX_TEXT]})
+                                   "explanation": _clip(item.get("explanation") or "")})
     return out
 
 
@@ -337,10 +352,12 @@ def _agent(agent: Any) -> str | None:
 
 def _actions(manifest: dict) -> tuple[list[dict], int]:
     """(each action the manifest's actions assertions declare, in order, with the
-    softwareAgent it names; how many past ``MAX_ACTIONS`` were left out). Written
-    down as declared, never classified. c2pa-rs 0.91.0 returns a softwareAgent as a
-    name and version, as a string, or as softwareAgentIndex into the assertion's
-    softwareAgents (C2PA 2.2 §18.14)."""
+    digital source type and softwareAgent it names; how many past ``MAX_ACTIONS``
+    were left out). Written down as declared. An action other than c2pa.created can
+    declare a source type of its own (an edit made with generative AI, say), so each
+    one keeps it. c2pa-rs 0.91.0 returns a softwareAgent as a name and version, as a
+    string, or as softwareAgentIndex into the assertion's softwareAgents (C2PA 2.2
+    §18.14)."""
     out: list[dict] = []
     total = 0
     for assertion in manifest.get("assertions") or []:
@@ -358,7 +375,9 @@ def _actions(manifest: dict) -> tuple[list[dict], int]:
             total += 1
             if len(out) >= MAX_ACTIONS:
                 continue
-            entry = {"action": str(act.get("action") or "")[:_MAX_TEXT]}
+            entry = {"action": _clip(act.get("action") or "")}
+            if act.get("digitalSourceType"):
+                entry["dst"] = _clip(act["digitalSourceType"])
             agent = _agent(act.get("softwareAgent"))
             index = act.get("softwareAgentIndex")
             if agent is None and index is not None:
@@ -369,25 +388,49 @@ def _actions(manifest: dict) -> tuple[list[dict], int]:
                     agent = (f"softwareAgentIndex {index}, not in the assertion's "
                              "softwareAgents")
             if agent:
-                entry["software_agent"] = agent[:_MAX_TEXT]
+                entry["software_agent"] = _clip(agent)
             out.append(entry)
     return out, total - len(out)
 
 
-def _delta_failures(results: dict, manifest_label: str | None, ingredient: dict) -> list[str]:
-    """Current failures for one ingredient, from the parent's ingredientDeltas."""
-    out = []
+# A code's other outcomes: what a code the reader reports now contradicts in what the
+# signing tool recorded. Only these pairs; signingCredential.expired, say, has none and
+# stays whatever else is found now.
+_OTHER_OUTCOMES = {"trusted": ("untrusted",), "untrusted": ("trusted",),
+                   "validated": ("mismatch", "missing"), "match": ("mismatch",),
+                   "mismatch": ("match", "validated"), "missing": ("validated",)}
+
+
+def _contradicted(code: str) -> set[str]:
+    """The codes ``code`` contradicts: claimSignature.validated for claimSignature.mismatch."""
+    family, _, outcome = code.rpartition(".")
+    return {f"{family}.{o}" for o in _OTHER_OUTCOMES.get(outcome, ())}
+
+
+def _delta_codes(results: dict, manifest_label: str | None,
+                 ingredient: dict) -> dict[str, list[dict]]:
+    """What the reader found for one ingredient that differs from what the signing tool
+    recorded for it, from ingredientDeltas. Each delta names the manifest that holds
+    the ingredient, so this serves an ingredient at any depth."""
+    out: dict[str, list[dict]] = {"success": [], "informational": [], "failure": []}
     label = ingredient.get("label")
     for delta in (results or {}).get("ingredientDeltas") or []:
         uri = str(delta.get("ingredientAssertionURI") or "")
         if label and uri.endswith("/c2pa.assertions/" + str(label)) and \
                 (not manifest_label or f"/{manifest_label}/" in uri):
-            out += [c["code"] for c in _codes(delta.get("validationDeltas"))["failure"]]
+            for kind, codes in _codes(delta.get("validationDeltas")).items():
+                out[kind] += codes
     return out
 
 
 def _ingredients(store: dict, manifest: dict, results: dict, tsa_uris: frozenset,
                  depth: int, seen: set) -> list[dict]:
+    """Each ingredient's declaration, signer and state. The state is what the reader
+    finds now: an ingredient carries the validation its signing tool recorded, against
+    that tool's trust lists, and c2pa-rs reports only how its own validation differs
+    (ingredientDeltas). So a code found now replaces the recorded code it contradicts,
+    and the list a signer is trusted on is the one the delta names. With no delta the
+    reader agreed with what was recorded, and the list is not named."""
     out = []
     for ing in manifest.get("ingredients") or []:
         if not isinstance(ing, dict):
@@ -400,17 +443,27 @@ def _ingredients(store: dict, manifest: dict, results: dict, tsa_uris: frozenset
             out.append(entry)
             continue
         recorded = _codes((ing.get("validation_results") or {}).get("activeManifest"))
-        failures = [c["code"] for c in recorded["failure"]]
-        failures += _delta_failures(results, manifest.get("label"), ing)
-        success = [c["code"] for c in recorded["success"]]
-        state, reason = _state(None, success, failures, None, tsa_uris)
+        now = _delta_codes(results, manifest.get("label"), ing)
+        # signingCredential.untrusted now replaces a recorded signingCredential.trusted,
+        # claimSignature.mismatch a recorded claimSignature.validated
+        replaced = set().union(*(_contradicted(c["code"]) for v in now.values() for c in v))
+        recorded = {k: [c for c in v if c["code"] not in replaced]
+                    for k, v in recorded.items()}
+        success = [c["code"] for c in recorded["success"] + now["success"]]
+        failures = [c["code"] for c in recorded["failure"] + now["failure"]]
+        named = [m.group(1) for c in now["success"] if c["code"] == "signingCredential.trusted"
+                 for m in [_LIST_IN_EXPLANATION.search(c.get("explanation", ""))] if m]
+        state, reason = _state(None, success, failures, named[0] if named else None, tsa_uris)
         dst, _action = _dst(child)
         entry.update(dst=dst, dst_class=classify_dst(dst), state=state,
-                     signer=_signer(child))
+                     signer=_signer(child),
+                     signature_validated="claimSignature.validated" in success)
+        if _blocking(failures):
+            entry["failures"] = _blocking(failures)
         if reason:
             entry["state_reason"] = reason
         if depth < MAX_DEPTH and label not in seen:
-            nested = _ingredients(store, child, {}, tsa_uris, depth + 1, seen | {label})
+            nested = _ingredients(store, child, results, tsa_uris, depth + 1, seen | {label})
             if nested:
                 entry["ingredients"] = nested
         elif label in seen or depth >= MAX_DEPTH:
@@ -436,18 +489,24 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
     active = results.get("activeManifest")
     codes = _codes(active) if active is not None else _codes_from_status(
         store.get("validation_status"))
-    failures = [c["code"] for c in codes["failure"]]
+    own = [c["code"] for c in codes["failure"]]
+    failures = list(own)
     for delta in results.get("ingredientDeltas") or []:
         failures += [c["code"] for c in _codes(delta.get("validationDeltas"))["failure"]]
     success = [c["code"] for c in codes["success"]]
     trust_list_uri = results.get("trustListUri")
     state, reason = _state(store.get("validation_state"), success, failures,
                            trust_list_uri, tsa_uris)
+    if state not in _VALID and not _blocking(own) and _blocking(failures):
+        reason = "an ingredient does not validate (see Ingredients)"
     dst, action = _dst(manifest)
     record: dict[str, Any] = {
         "state": state,
         "codes": codes,
         "signer": _signer(manifest),
+        # whether the claim signature verified; without it the certificate in the
+        # manifest does not show who signed
+        "signature_validated": "claimSignature.validated" in success,
         "claim_generator": _claim_generator(manifest),
         "signed_time": (manifest.get("signature_info") or {}).get("time"),
         "active_manifest": label,
@@ -456,8 +515,9 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
         "dst_action": action,
         # C2PA 2.2 §15.3: data from a manifest that is not valid is not attributable
         # to its signer; it is recorded, and marked so
-        "dst_signed_valid": bool(dst) and state in ("valid_untrusted", "trusted"),
-        "hard_binding_mismatch": any(c in HARD_BINDING_MISMATCH for c in failures),
+        "dst_signed_valid": bool(dst) and state in _VALID,
+        # the active manifest's own bindings: an ingredient's are its own
+        "hard_binding_mismatch": any(c in HARD_BINDING_MISMATCH for c in own),
         "ingredients": _ingredients(store, manifest, results, tsa_uris, 1, {label}),
         "spec_version": results.get("specVersion"),
         "trust_list_uri": trust_list_uri,
@@ -476,9 +536,11 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
 class _Blocks:
     def __init__(self) -> None:
         self.mime: str = ""
-        self.known: bool = False          # a container this module walks fully
+        # the container was walked from its start to its end with nothing out of
+        # place, so a store it does not show is not in it; otherwise the reader decides
+        self.known: bool = False
         self.xmp: list[bytes] = []
-        self.stores: list[str] = []       # where a C2PA manifest store was seen
+        self.stores: list[str] = []       # where a block that carries C2PA was seen
 
 
 def _read(fh: BinaryIO, n: int) -> bytes:
@@ -497,9 +559,13 @@ def _read(fh: BinaryIO, n: int) -> bytes:
 
 
 def _jpeg(fh: BinaryIO, out: _Blocks) -> None:
+    """The segments before the image data. A byte where a marker must be (stray
+    padding, a damaged length) ends the walk short of the scan, and c2pa-rs still
+    finds a store past such a byte, so the file is then not one the walk settles."""
     out.mime = "image/jpeg"
     fh.seek(2)
     ext: dict[bytes, bytes] = {}
+    clean = False
     while True:
         if fh.read(1) != b"\xff":
             break
@@ -512,6 +578,7 @@ def _jpeg(fh: BinaryIO, out: _Blocks) -> None:
         if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
             continue
         if marker in (0xDA, 0xD9):          # start of scan, end of image
+            clean = True
             break
         raw = fh.read(2)
         if len(raw) < 2:
@@ -533,13 +600,14 @@ def _jpeg(fh: BinaryIO, out: _Blocks) -> None:
         else:
             fh.seek(length, 1)
     out.xmp.extend(ext.values())
-    out.known = True
+    out.known = clean
 
 
 def _png(fh: BinaryIO, out: _Blocks) -> None:
     import zlib  # pylint: disable=import-outside-toplevel
     out.mime = "image/png"
     fh.seek(8)
+    clean = False
     while True:
         head = fh.read(8)
         if len(head) < 8:
@@ -561,32 +629,33 @@ def _png(fh: BinaryIO, out: _Blocks) -> None:
             fh.seek(length + 4, 1)
             out.stores.append("PNG caBX")
         elif ctype == b"IEND":
+            clean = True
             break
         else:
             fh.seek(length + 4, 1)
-    out.known = True
+    out.known = clean
 
 
-def _webp(fh: BinaryIO, out: _Blocks) -> None:
+def _webp(fh: BinaryIO, out: _Blocks, size: int) -> None:
+    """The chunks of the RIFF container, which has to end where its header says."""
     out.mime = "image/webp"
-    fh.seek(12)
-    while True:
+    fh.seek(4)
+    end = 8 + struct.unpack("<I", fh.read(4))[0]
+    pos = 12
+    while pos + 8 <= min(end, size):
+        fh.seek(pos)
         head = fh.read(8)
-        if len(head) < 8:
-            break
         ctype, length = head[:4], struct.unpack("<I", head[4:])[0]
-        pad = length & 1
         if ctype == b"XMP ":
             out.xmp.append(_read(fh, length))
-            fh.seek(pad, 1)
-        else:
-            if ctype == b"C2PA":
-                out.stores.append("WebP C2PA")
-            fh.seek(length + pad, 1)
-    out.known = True
+        elif ctype == b"C2PA":
+            out.stores.append("WebP C2PA")
+        pos += 8 + length + (length & 1)
+    out.known = pos == end <= size
 
 
 def _tiff(fh: BinaryIO, out: _Blocks) -> None:
+    """The first IFD, where C2PA puts its tag; every entry of it has to be there."""
     out.mime = "image/tiff"
     fh.seek(0)
     head = fh.read(8)
@@ -595,10 +664,13 @@ def _tiff(fh: BinaryIO, out: _Blocks) -> None:
     raw = fh.read(2)
     if len(raw) < 2:
         return
-    for _ in range(min(struct.unpack(end + "H", raw)[0], 4096)):
+    count = struct.unpack(end + "H", raw)[0]
+    if count > 4096:
+        return
+    for _ in range(count):
         entry = fh.read(12)
         if len(entry) < 12:
-            break
+            return
         tag, typ, count = struct.unpack(end + "HHI", entry[:8])
         if tag == 52545:
             out.stores.append("TIFF tag 52545")
@@ -613,27 +685,32 @@ def _tiff(fh: BinaryIO, out: _Blocks) -> None:
     out.known = True
 
 
-def _boxes(fh: BinaryIO, start: int, end: int):
-    """(type, payload offset, payload size) of each ISOBMFF box in [start, end)."""
+def _boxes(fh: BinaryIO, start: int, end: int, *, strict: bool = False):
+    """(type, payload offset, payload size) of each ISOBMFF box in [start, end).
+    ``strict``: the boxes have to fill the range exactly, or ValueError, which is
+    how the file's top level is walked (a C2PA store is a top-level box); inside a
+    box a damaged child only ends the walk of that box."""
     pos = start
     while pos + 8 <= end:
         fh.seek(pos)
         head = fh.read(8)
         if len(head) < 8:
-            return
+            break
         size, btype = struct.unpack(">I", head[:4])[0], head[4:]
         hdr = 8
         if size == 1:
             big = fh.read(8)
             if len(big) < 8:
-                return
+                break
             size, hdr = struct.unpack(">Q", big)[0], 16
         elif size == 0:
             size = end - pos
-        if size < hdr:
-            return
+        if size < hdr or pos + size > end:
+            break
         yield btype, pos + hdr, size - hdr
         pos += size
+    if strict and pos != end:
+        raise ValueError("the boxes do not reach the end of the file")
 
 
 def _uint(data: bytes, pos: int, n: int) -> int:
@@ -721,7 +798,7 @@ def _isobmff(fh: BinaryIO, out: _Blocks, size: int) -> None:
                 b"heis": "image/heic", b"avif": "image/avif", b"avis": "image/avif",
                 b"qt  ": "video/quicktime"}.get(
         brand, "image/heif" if brand in _HEIF_BRANDS else "video/mp4")
-    for btype, pos, n in _boxes(fh, 0, size):
+    for btype, pos, n in _boxes(fh, 0, size, strict=True):
         if btype == b"uuid" and n >= 16:
             fh.seek(pos)
             uid = fh.read(16)
@@ -758,7 +835,7 @@ def scan_blocks(path: str | Path) -> _Blocks:
             elif head[:8] == b"\x89PNG\r\n\x1a\n":
                 _png(fh, out)
             elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
-                _webp(fh, out)
+                _webp(fh, out, size)
             elif head[:4] in (b"II*\x00", b"MM\x00*"):
                 _tiff(fh, out)
             elif head[4:8] in (b"ftyp", b"moov", b"mdat", b"wide", b"free", b"uuid"):
@@ -1074,29 +1151,43 @@ def library_version() -> str | None:
 
 
 def _scrub(text: str, path: str) -> str:
+    """A Python error's text, with every path in it removed (``scrub_local_paths``)."""
     from .imaging import scrub_local_paths  # pylint: disable=import-outside-toplevel
-    return scrub_local_paths(text, path)[:_MAX_TEXT]
+    return _clip(scrub_local_paths(text, path))
+
+
+def _reader_text(exc: Exception, path: str) -> str:
+    """A reader's message as it gave it, with only the file's own path taken out: the
+    JUMBF URIs and addresses a validator names are part of what it reports."""
+    text = str(exc)
+    for form in sorted({path, path.replace("\\", "/"), path.replace("/", "\\")},
+                       key=len, reverse=True):
+        text = text.replace(form, "")
+    return _clip(text)
 
 
 # -- one file: what the bytes settle, what the reader is asked, what is recorded -------
 
-ABSENT_BY_SCAN = ("no manifest store and no reference to one in the file's metadata "
-                  "blocks (read by GLEAPP)")
+ABSENT_BY_SCAN = ("no manifest store and no reference to one, the file's container "
+                  "read by GLEAPP from start to end")
 ABSENT_BY_READER = "the c2pa reader found no manifest store"
-READER_STOPPED = "C2PA not checked: the reader stopped on this file"
-UNSUPPORTED = "C2PA not checked: the c2pa reader does not support this format"
-UNREADABLE = "C2PA not checked: the c2pa reader could not read the file"
+READER_STOPPED = "the c2pa reader stopped on this file"
+UNSUPPORTED = "the c2pa reader does not support this format"
+UNREADABLE = "the c2pa reader could not read the file"
 
 
 def prescan(path: str | Path) -> tuple[dict, dict | None]:
     """(record, request). The part of a read GLEAPP does itself, from the bytes.
     ``request`` is None when the record is final; otherwise it is what the reader
-    is to be asked: ``{"path", "mime", "remote"}``."""
+    is to be asked: ``{"path", "mime", "remote"}``. ``dst_class`` stays None until
+    a manifest is read: a file nobody read declares nothing either way."""
     path = str(path)
-    record: dict[str, Any] = {"state": "not_checked", "codes": _codes(None),
-                              "active_dst": None, "dst_class": "none", "ingredients": [],
-                              "xmp_dst": None, "store_in_bytes": None,
-                              "library_version": None}
+    record: dict[str, Any] = {
+        "state": "not_checked", "codes": _codes(None), "active_dst": None,
+        "dst_class": None, "ingredients": [], "xmp_dst": None, "store_in_bytes": None,
+        "library_version": None, "gleapp_version": __version__,
+        # a result can change with time (a certificate expires), so it is dated
+        "read_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     try:
         blocks = scan_blocks(path)
     except OSError as exc:
@@ -1106,6 +1197,8 @@ def prescan(path: str | Path) -> tuple[dict, dict | None]:
     record["xmp_dst"] = xmp_declaration(blocks.xmp)
     record["store_in_bytes"] = ", ".join(blocks.stores) or None
     remote = _remote_reference(blocks.xmp)
+    if remote:
+        record["remote_url"] = remote
     if blocks.known and not blocks.stores and not remote:
         # the whole container was read and holds none: no reader is needed to say so
         record["state"] = "absent"
@@ -1135,14 +1228,19 @@ def read_outcome(path: str, mime: str, settings: dict) -> dict:
                 reader.close()
     except c2pa.C2paError.ManifestNotFound:
         return {"kind": "absent", "library_version": version}
-    except c2pa.C2paError.RemoteManifest:
-        return {"kind": "remote", "library_version": version}
     except c2pa.C2paError.NotSupported:
         return {"kind": "unsupported", "library_version": version}
     except (c2pa.C2paError.Io, c2pa.C2paError.FileNotFound) as exc:
-        return {"kind": "io", "reason": _scrub(str(exc), path), "library_version": version}
+        return {"kind": "io", "reason": _reader_text(exc, path), "library_version": version}
     except c2pa.C2paError as exc:       # about the manifest store itself
-        return {"kind": "malformed", "reason": _scrub(str(exc), path),
+        text = str(exc)
+        # c2pa-python 0.38.0 raises a remote manifest as a plain C2paError whose message
+        # starts "Remote:" (its RemoteManifest subclass is for another prefix)
+        if isinstance(exc, c2pa.C2paError.RemoteManifest) or text.startswith("Remote:"):
+            url = re.search(r"https?://\S+", text)
+            return {"kind": "remote", "url": url.group(0) if url else None,
+                    "library_version": version}
+        return {"kind": "malformed", "reason": _reader_text(exc, path),
                 "library_version": version}
     # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - recorded, never raised into the pipeline
@@ -1164,9 +1262,13 @@ def finish(record: dict, request: dict, outcome: dict, trust: TrustLists) -> dic
     elif kind == "absent":
         record["state"] = "absent"
         record["state_reason"] = ABSENT_BY_READER
+        if record.get("store_in_bytes"):
+            # GLEAPP's walk is not a reader: what it saw is reported, not decided on
+            record["state_reason"] += (", though GLEAPP saw a block that carries C2PA "
+                                       f"in {record['store_in_bytes']}")
     elif kind == "remote":
         record["state_reason"] = REMOTE_NOT_FETCHED
-        record["remote_url"] = request.get("remote")
+        record["remote_url"] = request.get("remote") or outcome.get("url")
     elif kind == "malformed":
         record["state"] = "malformed"
         record["state_reason"] = outcome.get("reason")
@@ -1204,7 +1306,7 @@ def read_provenance(path: str | Path, *, trust: TrustLists | None = None) -> dic
     return finish(record, request, outcome, trust)
 
 
-TRUST_UNREADABLE = "C2PA not checked: trust list could not be read: "
+TRUST_UNREADABLE = "a trust list could not be read: "
 
 
 # -- many files: the reader in a child process ----------------------------------------
@@ -1272,10 +1374,13 @@ def read_batch(paths: Iterable[str | Path], *, trust: TrustLists | None = None,
 
 
 def columns(record: dict) -> dict:
-    """The four columns ``files`` keeps for a record."""
+    """The four columns ``files`` keeps for a record. The signer column names a signer
+    only when the claim signature verified, and the class stays None when no manifest
+    was read."""
+    validated = record.get("signature_validated")
     return {"c2pa_state": record["state"],
-            "c2pa_dst_class": record.get("dst_class") or "none",
-            "c2pa_signer": signer_text(record.get("signer")) or None,
+            "c2pa_dst_class": record.get("dst_class"),
+            "c2pa_signer": (signer_text(record.get("signer")) or None) if validated else None,
             "c2pa_info": json.dumps(record, sort_keys=True)}
 
 
@@ -1285,47 +1390,73 @@ EMPTY_COLUMNS = {"c2pa_state": None, "c2pa_dst_class": None, "c2pa_signer": None
 
 # -- words for the surfaces -----------------------------------------------------------
 
-def _term(uri: str) -> str:
-    return str(uri).rstrip("/").rsplit("/", 1)[-1]
-
-
 def _term_text(uri: str, cls: str | None) -> str:
-    """'term (class)', the term marked when IPTC has retired it."""
-    term = _term(uri)
-    if term in RETIRED_TERMS and _IPTC_NAMESPACE in str(uri).lower():
+    """'term (class)' for a URI of IPTC's or C2PA's vocabulary, the term marked when
+    IPTC has retired it; any other URI is shown whole, so where it comes from shows."""
+    found = _dst_uri(uri)
+    term = found.group(2) if found else str(uri)
+    if found and term in RETIRED_TERMS and found.group(1).lower() != "c2pa.org":
         term += ", retired by IPTC"
     return f"{term} ({DST_CLASS_LABELS.get(cls, '')})"
+
+
+def _signer_row(signer: dict | None, validated: bool) -> tuple[str, str] | None:
+    """The signer, or, when the claim signature did not verify, the certificate the
+    manifest carries: a certificate is public, so it does not show who signed."""
+    text = signer_text(signer)
+    if not text:
+        return None
+    if validated:
+        return "Signer", text
+    return ("Certificate in the manifest",
+            f"{text}; the claim signature did not verify, so this does not show who signed")
 
 
 def _ingredient_lines(ingredients: list, depth: int = 0) -> list[str]:
     lines = []
     for ing in ingredients or []:
         dst = ing.get("dst")
-        what = _term_text(dst, ing.get("dst_class")) if dst else "no source type declared"
         state = STATE_SHORT.get(ing.get("state"), ing.get("state") or "")
-        lines.append(f"{'  ' * depth}{ing.get('title') or 'untitled'}: {what}; {state}")
+        parts = [_term_text(dst, ing.get("dst_class")) if dst else "no source type declared",
+                 f"{state} ({ing['state_reason']})" if ing.get("state_reason") else state]
+        who = _signer_row(ing.get("signer"), bool(ing.get("signature_validated")))
+        if who:
+            parts.append(f"signer {who[1]}" if who[0] == "Signer" else
+                         f"certificate {signer_text(ing.get('signer'))}, signature not verified")
+        if ing.get("failures"):
+            parts.append("failures: " + ", ".join(ing["failures"]))
+        if ing.get("ingredients_not_followed"):
+            parts.append(f"its ingredients not followed ({ing['ingredients_not_followed']})")
+        lines.append(f"{'  ' * depth}{ing.get('title') or 'untitled'}: " + "; ".join(parts))
         lines += _ingredient_lines(ing.get("ingredients") or [], depth + 1)
     return lines
 
 
 def _actions_text(record: dict) -> str | None:
-    """The declared actions, one a line, as the manifest names them; None when the
-    record has no manifest to declare any."""
+    """The declared actions, one a line, as the manifest names them, each with the
+    source type and software agent it declares; None when the record has no manifest
+    to declare any."""
     if "actions" not in record:
         # read by a GLEAPP that did not keep them: not the same as none declared
         return ("not recorded by the GLEAPP that read this file "
                 "(gleapp provenance --force reads it again)"
                 if record.get("active_manifest") else None)
-    lines = [(a.get("action") or "(no action named)")
-             + (f" (software agent: {a['software_agent']})" if a.get("software_agent") else "")
-             for a in record["actions"] or [] if isinstance(a, dict)]
+    lines = []
+    for a in record["actions"] or []:
+        if not isinstance(a, dict):
+            continue
+        line = a.get("action") or "(no action named)"
+        if a.get("dst"):
+            line += f"; source type: {_term_text(a['dst'], classify_dst(a['dst']))}"
+        if a.get("software_agent"):
+            line += f"; software agent: {a['software_agent']}"
+        lines.append(line)
     if record.get("actions_omitted"):
         lines.append(f"and {record['actions_omitted']} more")
     if not lines:
         return "none declared"
-    if record.get("state") not in ("valid_untrusted", "trusted"):
-        # C2PA 2.2 §15.3, as for the declared source type
-        lines.insert(0, "not backed by a valid signature:")
+    if record.get("state") not in _VALID:
+        lines.insert(0, NOT_BACKED + ":")       # C2PA 2.2 §15.3, as for the source type
     return "\n".join(lines)
 
 
@@ -1336,30 +1467,39 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if not record:
         return [("State", "Not read yet")]
     rows: list[tuple[str, str]] = []
-    label = STATE_LABELS.get(record.get("state"), record.get("state") or "")
+    state = record.get("state")
+    label = STATE_LABELS.get(state, state or "")
     reason = record.get("state_reason")
     rows.append(("State", f"{label}: {reason}" if reason else label))
-    if signer_text(record.get("signer")):
-        rows.append(("Signer", signer_text(record.get("signer"))))
+    validated = bool(record.get("signature_validated"))
+    signer = _signer_row(record.get("signer"), validated)
+    if signer:
+        rows.append(signer)
     if record.get("signed_time"):
-        rows.append(("Time-stamp", str(record["signed_time"])))
+        # the validator's own time-stamp codes, as reported, say what stands behind it
+        stamp = [c.get("code") for kind in ("success", "informational", "failure")
+                 for c in (record.get("codes") or {}).get(kind, [])
+                 if isinstance(c, dict) and str(c.get("code", "")).startswith("timeStamp.")]
+        rows.append(("Time-stamp", str(record["signed_time"])
+                     + (f" ({', '.join(stamp)})" if stamp else "")))
     if record.get("claim_generator"):
         rows.append(("Claim generator", str(record["claim_generator"])))
     if record.get("active_dst"):
         text = _term_text(record["active_dst"], record.get("dst_class"))
         if not record.get("dst_signed_valid"):
-            text += ", not backed by a valid signature"
+            text += ", " + NOT_BACKED
         rows.append(("Declared source type", text))
     actions = _actions_text(record)
     if actions:
         rows.append(("Declared actions", actions))
     if record.get("trusted_by"):
         listed = str(record["trusted_by"])
-        if record.get("state") not in _VALID:
+        if not validated:
+            listed += "; the claim signature did not verify, so this does not show who signed"
+        elif state not in _VALID:
             # a fact about the certificate, which vouches for nothing in a manifest
             # that does not validate (C2PA 2.2 §15.3)
-            listed += ("; the manifest is not valid, so this names who signed it, "
-                       "not who stands behind this content")
+            listed += "; the manifest does not validate, so this vouches for nothing in it"
         rows.append(("Signer's trust list", listed))
     if record.get("hard_binding_mismatch"):
         rows.append(("Hard binding", "does not match the content the manifest was signed "
@@ -1379,9 +1519,13 @@ def describe(record: dict | None) -> list[tuple[str, str]]:
     if record.get("remote_url"):
         rows.append(("Remote manifest", str(record["remote_url"])))
     if record.get("store_in_bytes"):
-        rows.append(("Manifest store in", str(record["store_in_bytes"])))
-    if record.get("library_version"):
-        rows.append(("Read with", str(record["library_version"])))
+        rows.append(("C2PA block seen in", str(record["store_in_bytes"])))
+    read = ", ".join(str(v) for v in (record.get("read_at"),
+                                      record.get("gleapp_version") and
+                                      f"GLEAPP {record['gleapp_version']}",
+                                      record.get("library_version")) if v)
+    if read:
+        rows.append(("Read", read))
     return rows
 
 
@@ -1400,25 +1544,34 @@ def _ai_ingredient(ingredients: Any) -> dict | None:
     return None
 
 
+def _mark(badge: str, what: str, state: str | None) -> dict:
+    backed = state in _VALID
+    label = STATE_LABELS.get(state, state or "")
+    return {"badge": badge, "backed": backed,
+            "text": badge if backed else f"{badge}, {NOT_BACKED}",
+            "title": what + (f"; {label}. " if backed else f", {NOT_BACKED} ({label}). ")
+                     + DECLARATION_NOTE}
+
+
 def ai_declaration(record: dict | None) -> dict | None:
     """What a file declares about generative AI, for the gallery's mark, or None when
-    nothing does: the file's own manifest first, then its XMP, then the first
-    ingredient that declares it. ``backed`` says whether a valid signature stands
-    behind the declaration, ``text`` says so in a list cell and ``title`` in full.
-    A file that declares nothing gets no mark: absence says nothing either way."""
+    nothing does: any action of the file's own manifest first, then its XMP, then the
+    first ingredient that declares it. ``backed`` says whether credentials that
+    validate stand behind the declaration, ``text`` says so in a list cell and
+    ``title`` in full. A file that declares nothing gets no mark: absence says nothing
+    either way."""
     if not record:
         return None
-    if record.get("active_dst") and record.get("dst_class") in AI_CLASSES:
-        state = STATE_LABELS.get(record.get("state"), record.get("state") or "")
-        what = _term_text(record["active_dst"], record["dst_class"])
-        backed = record.get("state") in _VALID
-        return {"badge": "AI declared", "backed": backed,
-                "text": "AI declared" if backed else
-                        "AI declared, not backed by a valid signature",
-                "title": f"Declared by the file's Content Credentials: {what}"
-                         + (f"; {state}. " if backed else
-                            f", not backed by a valid signature ({state}). ")
-                         + DECLARATION_NOTE}
+    own = [(a.get("dst"), a.get("action")) for a in record.get("actions") or []
+           if isinstance(a, dict) and a.get("dst")]
+    if not own and record.get("active_dst"):
+        own = [(record["active_dst"], record.get("dst_action"))]
+    for uri, action in own:
+        cls = classify_dst(uri)
+        if cls in AI_CLASSES:
+            return _mark("AI declared", "Declared by the file's Content Credentials"
+                         + (f", on its {action} action" if action else "")
+                         + f": {_term_text(uri, cls)}", record.get("state"))
     xmp = record.get("xmp_dst")
     if isinstance(xmp, dict) and xmp.get("uri") and xmp.get("class") in AI_CLASSES:
         return {"badge": "AI declared", "backed": False, "text": "AI declared, unsigned (XMP)",
@@ -1426,16 +1579,9 @@ def ai_declaration(record: dict | None) -> dict | None:
                          f"{UNSIGNED}. {DECLARATION_NOTE}"}
     ing = _ai_ingredient(record.get("ingredients"))
     if ing:
-        state = STATE_LABELS.get(ing.get("state"), ing.get("state") or "")
-        backed = ing.get("state") in _VALID
-        return {"badge": "AI in ingredient", "backed": backed,
-                "text": "AI in ingredient" if backed else
-                        "AI in ingredient, not backed by a valid signature",
-                "title": f'Declared by the ingredient "{ing.get("title") or "untitled"}": '
-                         f"{_term_text(ing['dst'], ing['dst_class'])}"
-                         + (f"; {state}. " if backed else
-                            f", not backed by a valid signature ({state}). ")
-                         + DECLARATION_NOTE}
+        title = ing.get("title") or "untitled"
+        return _mark("AI in ingredient", f'Declared by the ingredient "{title}": '
+                     f"{_term_text(ing['dst'], ing['dst_class'])}", ing.get("state"))
     return None
 
 
@@ -1445,9 +1591,9 @@ def describe_text(record: dict | None) -> str:
 
 
 def xmp_text(record: dict | None) -> str:
-    """The unsigned XMP declaration's class, labelled as such, or ''."""
+    """The URI the XMP declares, marked as an unsigned declaration, or ''."""
     xmp = (record or {}).get("xmp_dst")
-    return f"{xmp.get('class')} ({UNSIGNED})" if xmp else ""
+    return f"{xmp.get('uri')} ({UNSIGNED})" if xmp else ""
 
 
 def _reclassify(ingredients: Any) -> None:
@@ -1470,7 +1616,7 @@ def load(info: str | None) -> dict | None:
         return None
     if not isinstance(rec, dict):
         return None
-    if "dst_class" in rec:
+    if rec.get("dst_class") is not None:      # None: no manifest was read
         rec["dst_class"] = classify_dst(rec.get("active_dst"))
     _reclassify(rec.get("ingredients"))
     xmp = rec.get("xmp_dst")

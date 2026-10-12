@@ -1135,8 +1135,8 @@ reconstruction, not a record, and its 290-odd crates include CDLA-Permissive-2.0
 `collect_all("c2pa")` would also pull `c2pa.build`, which imports requests: that brings
 certifi (MPL-2.0) and cryptography with a static OpenSSL 4.0.3, and about 293 MB of
 `.pdb`/`.lib`/`.exp` build files on Windows. So the spec excludes `c2pa` (PyInstaller
-follows the import inside a function), and the frozen app records "C2PA not checked:
-library unavailable". The exclude keeps the code out and not the metadata: PyInstaller
+follows the import inside a function), and the frozen app records "Not checked: the
+c2pa library is not installed". The exclude keeps the code out and not the metadata: PyInstaller
 copies a distribution's dist-info wherever the code names it to `importlib.metadata`, and
 `provenance.library_version()` asks for `c2pa-python`. Measured 2026-10-11 on Linux with
 PyInstaller 6.22.2 and the extra installed: the bundle carried

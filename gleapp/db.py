@@ -199,8 +199,10 @@ CREATE TABLE IF NOT EXISTS files (
                                           -- | trusted | not_checked
     c2pa_dst_class TEXT,                  -- the class of the source type the active manifest
                                           -- declares (provenance.DST_CLASSES), even when the
-                                          -- manifest is not valid; 'none' when it declares none
-    c2pa_signer    TEXT,                  -- 'common name (issuer)' of the claim signer
+                                          -- manifest is not valid; 'none' when it declares none,
+                                          -- NULL when no manifest was read
+    c2pa_signer    TEXT,                  -- 'common name (organization)' of the claim signer,
+                                          -- NULL unless the claim signature verified
     c2pa_info      TEXT                   -- JSON: the whole record, codes, ingredients, the
                                           -- unsigned XMP declaration and the trust lists used
 );

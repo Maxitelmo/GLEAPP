@@ -52,7 +52,10 @@ def _record(term=None, *, state="Valid", trusted=False, failure=(), signer="Synt
         "signature_info": {"issuer": "Synthetic Test Org", "common_name": signer,
                            "time": "2026-01-02T03:04:05+00:00"}}},
         "validation_results": {"activeManifest": {
-            "success": [{"code": "signingCredential.trusted"}] if trusted else [],
+            # a real reader reports the claim signature verified unless it failed
+            "success": ([] if any(c.startswith("claimSignature.") for c in failure)
+                        else [{"code": "claimSignature.validated"}])
+                       + ([{"code": "signingCredential.trusted"}] if trusted else []),
             "informational": [],
             "failure": [{"code": c} for c in failure]}}}
     rec = {"xmp_dst": None, "store_in_bytes": "JPEG APP11",
@@ -144,18 +147,29 @@ def test_a_valid_state_names_the_signer_and_the_trust_list_and_nothing_more():
     assert "trusted" in pv.STATES and "valid_untrusted" in pv.STATES
 
 
-def test_a_listed_signer_of_a_manifest_that_is_not_valid_names_who_signed_only():
+def test_a_listed_signer_of_a_manifest_that_is_not_valid_vouches_for_nothing():
     """A manifest can be signed by a listed signer and still not match the content
     (carried over from other content, or the content changed). The list stays, as a
     fact about the certificate, and says it does not vouch for this content."""
-    for name in ("changed.jpg",):
-        rec = dict(RECORDS[name], trusted_by="C2PA Trust List (synthetic)")
-        assert rec["state"] == "invalid"
-        assert dict(pv.describe(rec))["Signer's trust list"] == (
-            "C2PA Trust List (synthetic); the manifest is not valid, so this names who "
-            "signed it, not who stands behind this content")
-    rec = dict(RECORDS["changed.jpg"], state="malformed", trusted_by="Examiner anchors")
-    assert "not who stands behind this content" in dict(pv.describe(rec))["Signer's trust list"]
+    rec = dict(RECORDS["changed.jpg"], trusted_by="C2PA Trust List (synthetic)")
+    assert rec["state"] == "invalid" and rec["signature_validated"]
+    assert dict(pv.describe(rec))["Signer's trust list"] == (
+        "C2PA Trust List (synthetic); the manifest does not validate, so this vouches "
+        "for nothing in it")
+
+
+def test_a_signature_that_does_not_verify_names_a_certificate_not_a_signer():
+    """A certificate is public: one in a manifest whose claim signature does not
+    verify does not show who signed, on the screen, in the column or on a list."""
+    rec = dict(_record("digitalCapture", state="Invalid", failure=("claimSignature.mismatch",)),
+               trusted_by="C2PA Trust List (synthetic)")
+    rows = dict(pv.describe(rec))
+    assert "Signer" not in rows
+    assert rows["Certificate in the manifest"] == (
+        "Synthetic Signer (Synthetic Test Org); the claim signature did not verify, so "
+        "this does not show who signed")
+    assert rows["Signer's trust list"].endswith("so this does not show who signed")
+    assert pv.columns(rec)["c2pa_signer"] is None
 
 
 def test_no_label_or_description_states_a_finding():
@@ -171,7 +185,7 @@ def test_no_label_or_description_states_a_finding():
 def test_a_declaration_from_a_manifest_that_is_not_valid_is_described_as_such():
     rows = dict(pv.describe(RECORDS["changed.jpg"]))
     assert rows["State"].startswith("Invalid")
-    assert "not backed by a valid signature" in rows["Declared source type"]
+    assert pv.NOT_BACKED in rows["Declared source type"]
     assert rows["Hard binding"].startswith("does not match")
     rows = dict(pv.describe(RECORDS["declared.jpg"]))
     assert rows["XMP source type"].endswith("unsigned declaration")
@@ -231,6 +245,22 @@ def test_the_sidebar_filters_offer_the_vocabulary():
         assert set(re.findall(r'value="([^"]*)"', body)) == expected, sel
 
 
+def test_the_sidebar_counts_credentials_as_the_filter_selects_them():
+    """"N with Content Credentials" was every file read but the absent ones, which
+    counted a file not checked (an unsigned BMP, say) as holding credentials."""
+    js = (REPO / "gleapp/web/static/app.js").read_text(encoding="utf-8")
+    fn = js[js.index("function updateC2paInfo("):]
+    fn = fn[:fn.index("\n}\n")]
+    states = re.search(r"const withCr = \[([^\]]*)\]", fn)
+    assert states, "the count is not taken from a list of states"
+    app = (REPO / "gleapp/web/app.py").read_text(encoding="utf-8")
+    any_filter = re.search(r'elif c2pa_q == "any":\s*where\.append\("c2pa_state IN \(([^)]*)\)',
+                           app)
+    assert set(re.findall(r"[a-z_]+", states.group(1))) == \
+        set(re.findall(r"[a-z_]+", any_filter.group(1))) == \
+        {"malformed", "invalid", "valid_untrusted", "trusted"}
+
+
 def test_the_filters_select_by_state_and_by_declared_class(client):
     everything = _names(client, "")
     assert _names(client, "c2pa=trusted") == {"camera.jpg"}
@@ -252,15 +282,20 @@ def test_the_details_pane_describes_the_record_with_the_caveat(case, client):
     rows = dict(f["c2pa_rows"])
     assert rows["State"].startswith("Invalid")
     assert rows["Signer"] == "Synthetic Signer (Synthetic Test Org)"
-    assert rows["Declared actions"] == "not backed by a valid signature:\nc2pa.created"
+    assert rows["Declared actions"] == (pv.NOT_BACKED + ":\nc2pa.created; source type: "
+                                        "trainedAlgorithmicMedia (Generative AI)")
     assert f["c2pa_caveat"] == pv.CAVEAT
     plain = client.get(f"/api/file/{ids['plain.jpg']}").get_json()
     assert dict(plain["c2pa_rows"])["State"].startswith("No Content Credentials")
 
 
-def test_the_search_box_finds_a_signer_and_a_claim_generator(client):
+def test_the_search_box_finds_a_signer_and_never_the_record_s_own_words(client):
+    """The stored record's keys and fixed texts are on every file read, so searching
+    them matched every picture on words such as "metadata"; only the signer is
+    searched."""
     assert _names(client, "q=Synthetic%20Camera") == {"camera.jpg"}
-    assert "generated.jpg" in _names(client, "q=Synthetic%20Tool")
+    for word in ("metadata", "store", "codes", "none", "GLEAPP"):
+        assert _names(client, f"q={word}") == set(), word
 
 
 # -- the exports ----------------------------------------------------------------------
@@ -271,7 +306,7 @@ def test_csv_and_json_carry_the_record(case, tmp_path):
     gen = rows["generated.jpg"]
     assert (gen["c2pa_state"], gen["c2pa_dst_class"]) == ("valid_untrusted", "generative_ai")
     assert gen["c2pa_signer"] == "Synthetic Signer (Synthetic Test Org)"
-    assert rows["declared.jpg"]["c2pa_xmp_dst"] == "generative_ai (unsigned declaration)"
+    assert rows["declared.jpg"]["c2pa_xmp_dst"] == DST + "trainedAlgorithmicMedia (unsigned declaration)"
     assert json.loads(gen["c2pa_info"])["state"] == "valid_untrusted"
     payload = json.loads(report.export_json(case, tmp_path / "r.json").read_text(
         encoding="utf-8"))
@@ -289,7 +324,7 @@ def test_the_html_report_offers_the_field_and_prints_the_caveat_with_it(case, tm
         encoding="utf-8")
     assert "Content Credentials" in html
     assert pv.STATE_LABELS["valid_untrusted"] in html
-    assert "not backed by a valid signature" in html
+    assert pv.NOT_BACKED in html
     assert "unsigned declaration" in html
     assert pv.CAVEAT.replace("'", "&#x27;") in html
 

@@ -720,7 +720,7 @@ def _c2pa_cells(row: dict) -> list[str]:
     if cls and cls != "none":
         declared = provenance.DST_CLASS_LABELS.get(cls, cls)
         if state not in ("valid_untrusted", "trusted"):
-            declared += " (not backed by a valid signature)"
+            declared += f" ({provenance.NOT_BACKED})"
     return [provenance.STATE_LABELS.get(state, "Not read yet") if state else "Not read yet",
             declared, row.get("c2pa_signer") or "", provenance.describe_text(record)]
 
@@ -1458,12 +1458,13 @@ _C2PA_NOTES = (
     "Content Credentials, Declared Source Type, C2PA Signer and Content Credentials "
     "Detail record what a picture's or video's own Content Credentials (C2PA) and IPTC "
     "digital source type declare, read from its metadata with nothing fetched: the "
-    "state of the credentials, the class of the source type the active manifest "
-    "declares, who signed it, and the codes, ingredients and trust lists behind that. "
-    "A source type from a manifest that is not valid is shown as not backed by a valid "
-    "signature, and one found only in XMP is an unsigned declaration, kept in the "
-    "detail and never in Declared Source Type. 'Not read yet' is a file a GLEAPP "
-    "build without this reading processed. " + provenance.CAVEAT
+    "state of the credentials, the class of the source type the c2pa.created action "
+    "declares (or the first action that declares one), who signed it when the claim "
+    "signature verified, and the rest of the record in the detail. A declaration from "
+    "credentials that do not validate is shown as " + provenance.NOT_BACKED + ", and "
+    "one found only in XMP is an unsigned declaration, kept in the detail and never in "
+    "Declared Source Type. 'Not read yet' is a picture or video whose credentials were "
+    "not read; gleapp provenance reads them. " + provenance.CAVEAT
 )
 
 _MEDIA_NOTES = (

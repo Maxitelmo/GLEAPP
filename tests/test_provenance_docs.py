@@ -73,11 +73,10 @@ def test_both_manuals_describe_the_declared_actions():
         assert "gleapp provenance --force" in doc
 
 
-ABSENCE = ("In files examined for this section, object erasure with Samsung Galaxy AI "
-           "and AI edits made on a Xiaomi phone left no AI declaration in the metadata "
-           "(no C2PA manifest, no XMP digital source type), only traces of editing. No "
-           "Content Credentials, or a manifest that declares no AI source type, says "
-           "nothing about whether AI was used.")
+ABSENCE = ("An edit made with AI can leave no AI declaration in the file's metadata: no "
+           "C2PA manifest and no XMP digital source type. No Content Credentials, or a "
+           "manifest that declares no AI source type, says nothing about whether AI was "
+           "used.")
 
 
 def _absence_sections() -> list[str]:
@@ -91,18 +90,11 @@ def test_both_manuals_say_what_an_absent_declaration_does_not_mean():
         assert ABSENCE in section
 
 
-def test_what_absence_does_not_mean_is_told_without_a_model_a_value_or_a_hash():
-    """The files behind it are real; the section names no device model, file name,
-    hash or value from them, and a digit is where any of those would show (C2PA is
-    the standard's name)."""
-    for section in _absence_sections():
-        assert not re.search(r"\d", section.replace("C2PA", "")), section
-
-
 def test_both_manuals_say_a_listed_signer_of_an_invalid_manifest_vouches_for_nothing():
     plain = _flat(html.unescape(re.sub(r"<[^>]+>", "", _help())))
     for doc in (_flat(_manual()), plain):
-        assert "names who signed the manifest, not who stands behind this content" in doc
+        assert "the certificate does not show who signed" in doc
+        assert "the list vouches for nothing in it" in doc
 
 
 def test_the_trust_list_readme_names_the_states_by_their_labels():

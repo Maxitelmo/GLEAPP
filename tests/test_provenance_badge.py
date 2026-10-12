@@ -83,18 +83,18 @@ def test_a_signed_valid_declaration_is_backed():
     decl = pv.ai_declaration(_record("trainedAlgorithmicMedia"))
     assert decl["badge"] == "AI declared" and decl["backed"] is True
     assert decl["text"] == "AI declared"
-    assert decl["title"] == ("Declared by the file's Content Credentials: trainedAlgorithmicMedia "
-                             "(Generative AI); Valid, signer not on a trust list. " + NOTE)
+    assert decl["title"] == ("Declared by the file's Content Credentials, on its c2pa.created "
+                             "action: trainedAlgorithmicMedia (Generative AI); Valid, signer "
+                             "not on a trust list. " + NOTE)
 
 
 def test_a_declaration_from_a_manifest_that_is_not_valid_is_not_backed():
     decl = pv.ai_declaration(_record("compositeSynthetic", state="Invalid",
                                      failure=("assertion.dataHash.mismatch",)))
     assert decl["badge"] == "AI declared" and decl["backed"] is False
-    assert decl["text"] == "AI declared, not backed by a valid signature"
-    assert "compositeSynthetic (Composite including generative AI elements), not backed " \
-           "by a valid signature " \
-           "(Invalid)" in decl["title"]
+    assert decl["text"] == "AI declared, " + pv.NOT_BACKED
+    assert "compositeSynthetic (Composite including generative AI elements), " \
+           + pv.NOT_BACKED + " (Invalid)" in decl["title"]
     assert decl["title"].endswith(NOTE)
 
 

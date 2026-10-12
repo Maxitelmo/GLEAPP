@@ -664,7 +664,7 @@ const C2PA_DST_LABEL = {
   virtual_recording: "Virtual event recording",
   human_edit: "Human edits",
   other: "Other",
-  none: "None declared",
+  none: "No source type in the manifest",
 };
 
 const LIST_DEFS = [
@@ -3101,13 +3101,18 @@ function updateC2paInfo(pv) {
   const info = $("#c2paInfo"), btn = $("#btnC2pa");
   const st = pv.states || {};
   const read = Object.values(st).reduce((a, b) => a + (b || 0), 0);
-  const withCr = read - (st.absent || 0);
+  // a store the reader read, as the "Has Content Credentials" filter counts them; a
+  // file not checked may hold one or not
+  const withCr = ["malformed", "invalid", "valid_untrusted", "trusted"]
+    .reduce((a, k) => a + (st[k] || 0), 0);
   const lines = [];
   if (pv.unread) lines.push(`Not read yet: ${pv.unread.toLocaleString()} pictures and videos.`);
-  if (read) lines.push(`Read: ${read.toLocaleString()}, ${withCr.toLocaleString()} with Content Credentials.`);
+  if (read) lines.push(`Read: ${read.toLocaleString()}; Content Credentials the reader read: `
+    + `${withCr.toLocaleString()}; not checked: ${(st.not_checked || 0).toLocaleString()}.`);
   if (!pv.library) lines.push("The c2pa library is not installed, so signatures are not checked.");
   info.textContent = lines.join(" ");
-  btn.style.display = pv.unread || st.not_checked ? "" : "none";
+  // reading the not checked again can only change something with the library there
+  btn.style.display = pv.unread || (st.not_checked && pv.library) ? "" : "none";
   btn.textContent = pv.unread
     ? `Read Content Credentials (${pv.unread.toLocaleString()} files)`
     : `Read again the ${(st.not_checked || 0).toLocaleString()} not checked`;

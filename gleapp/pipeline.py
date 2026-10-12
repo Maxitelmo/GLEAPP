@@ -797,10 +797,13 @@ def process(
     total = len(rows)
     done = [0]
     for_reader: list[int] = []
+    not_checked = [0]
 
     def _write(res: dict) -> None:
         if _needs_reader(res["fields"]):
             for_reader.append(res["id"])
+        elif res["fields"].get("c2pa_state") == "not_checked":
+            not_checked[0] += 1
         if res["status"] == "ok":
             stats.processed += 1
         elif res["status"] == "skip":
@@ -865,6 +868,10 @@ def process(
                          lambda: provenance_pass(case, ids=for_reader, progress=progress))
         if read is not None:
             stats.stages["provenance"] = f"ok: {read['read']} read by the c2pa reader"
+    elif not_checked[0]:
+        # the bytes showed a store (or could not be walked) and there is no reader
+        stats.stages["provenance"] = (f"ok: {not_checked[0]} not checked: "
+                                      f"{provenance.library_available()[1] or 'see each file'}")
     else:
         stats.stages["provenance"] = "ok: no manifest store for the reader"
 

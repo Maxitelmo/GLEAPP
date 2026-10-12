@@ -1922,22 +1922,28 @@ Each picture and video gets one state (C2PA 2.2, §14.3, *Validation states*):
 
 | State | Meaning |
 |---|---|
-| **No Content Credentials** (`absent`) | No manifest store. Either GLEAPP read every metadata block of a JPEG, PNG, WebP, TIFF or ISOBMFF (HEIC, AVIF, MP4, MOV) file and found neither a store nor a reference to one, or the c2pa reader found none. The details say which. |
+| **No Content Credentials** (`absent`) | No manifest store. Either GLEAPP walked the file's container from its start to its end (a JPEG up to its image data, a PNG, a WebP, a TIFF's first IFD, the top level of an ISOBMFF file such as HEIC, AVIF, MP4 or MOV) and found neither a store nor a reference to one, or the c2pa reader found none. A container the walk cannot finish, a stray byte or a cut-off file, goes to the reader. The details say which. |
 | **Malformed** | A store that is not well formed: the reader could not parse it, or reported a well-formedness failure (the codes C2PA's Asset Rubrics treat as such). |
 | **Invalid** | Well formed, but validation failed. One such failure is a hard binding that does not match the content the manifest was signed for: for example, the content changed after signing, or the manifest belongs to other content. |
 | **Valid, signer not on a trust list** (`valid_untrusted`) | The signature validates and the content matches it, but the signer's certificate does not chain to any trust list GLEAPP holds. Who signed is not established. |
 | **Valid, signer on a trust list** (`trusted`) | Valid, and the signer's certificate chains to a trust list GLEAPP holds. The record names which list. It says who signed, not that the content is true. |
-| **Not checked** | Not validated, and the record says why: the c2pa library is not installed, the manifest lives at a remote address (never fetched, see below), the reader does not support the format, a trust list you set cannot be read, or the reader stopped on the file. |
+| **Not checked** | Not validated, and the record says why: the c2pa library is not installed, the manifest lives at a remote address (never fetched, see below), the reader does not support the format or could not read the file, or the reader stopped on the file. |
 
 A file processed by a GLEAPP without this reading has no state yet (**Not read yet**).
 
 The validator's own status codes (C2PA 2.2, §15.2.2) are kept with each record:
-success, informational and failure.
+success, informational and failure. The signer is named only when the claim signature
+verifies; otherwise the details show the certificate the manifest carries, which does not
+show who signed (a certificate is public), and the *C2PA signer* column stays empty. A
+time-stamp is shown with the validator's own `timeStamp` codes beside it. Each record is
+dated and names the GLEAPP and c2pa versions that read it, because a result can change
+with time: a certificate that was valid can expire.
 
 ### Declared source type
 
-The digital source type the active manifest's actions declare (C2PA 2.2,
-§18.14.4.5, using the IPTC Digital Source Type vocabulary), grouped:
+The digital source type the active manifest's `c2pa.created` action declares, or the
+first action that declares one (C2PA 2.2, §18.14.4.5, using the IPTC Digital Source Type
+vocabulary), grouped:
 
 | Class | Terms |
 |---|---|
@@ -1953,7 +1959,7 @@ The digital source type the active manifest's actions declare (C2PA 2.2,
 | Virtual event recording | `virtualRecording` |
 | Human edits | `humanEdits`, `minorHumanEdits` (retired by IPTC) |
 | Other | any other term, `digitalArt` and `softwareImage` (both retired by IPTC) among them |
-| None declared | the manifest declares none |
+| No source type in the manifest | a manifest was read and declares none (a file whose manifest was not read has no class) |
 
 A class whose name says AI holds only terms whose IPTC definition includes generative
 AI. *Virtual event recording* is, in IPTC's words, a live recording of a virtual event
@@ -1974,11 +1980,19 @@ content, such as sharpening or noise reduction.
 A term IPTC has retired is still read and keeps its class, since a file can still
 declare it; wherever GLEAPP shows the term, it adds *retired by IPTC*.
 
-A term is matched on its whole last segment, so a composite is never read as fully
-generated. The declaration of a manifest that is not valid is still recorded, marked
-**not backed by a valid signature** (C2PA 2.2, §15.3). Ingredients (the files an
-edit was made from) are listed with their own declaration, signer and state, so a
-generated picture inside an edit that declares nothing is visible.
+A term counts only as a whole URI of IPTC's or C2PA's vocabulary, so a composite is
+never read as fully generated, and a URI that merely contains IPTC's address is *Other*
+and shown whole. Another action can declare a source type of its own, an edit made with
+generative AI say: *Declared actions* lists each with its source type, and the gallery's
+mark looks at every one. The declaration of a manifest that is not valid is still
+recorded, marked **not backed by credentials that validate** (C2PA 2.2, §15.3).
+
+Ingredients (the files an edit was made from) are listed with their own declaration,
+signer, state and failures, so a generated picture inside an edit that declares nothing is
+visible. An ingredient carries the validation its own signing tool recorded, against that
+tool's trust lists; GLEAPP shows the reader's result now instead, so an ingredient is on a
+trust list only if it is on one GLEAPP holds. A store that fails only in an ingredient is
+**Invalid**, and the state says an ingredient does not validate.
 
 Each record keeps the source type URI exactly as declared, and the class is worked out
 from it by the GLEAPP reading the case. A case read before a term was moved to another
@@ -1991,20 +2005,19 @@ an **unsigned declaration** and never folded into the state or the declared clas
 ### Declared actions
 
 **Declared actions** lists every action the active manifest declares (C2PA 2.2, §18.14),
-in order, each with the software agent it names: a name and version, or the text an
-older manifest carries. They are transcribed as written and never classified, so an
-action GLEAPP has no word for, such as a vendor's own `com.example.provided`, is shown
-as it stands. The actions of a manifest that is not valid are marked **not backed by a
-valid signature**. A manifest that declares none says **none declared**; a file read by
+in order, each with the source type and the software agent it names: a name and
+version, or the text an older manifest carries. They are transcribed as written and never
+classified, so an action GLEAPP has no word for, such as a vendor's own
+`com.example.provided`, is shown as it stands. The actions of a manifest that is not valid
+are marked **not backed by credentials that validate**. A manifest that declares none says **none declared**; a file read by
 a GLEAPP that did not keep actions says so instead, and `gleapp provenance --force`
 reads it again. They show in the details pane, the HTML report's Content Credentials
 field and LAVA's Content Credentials Detail.
 
 ### What a state does not mean
 
-In files examined for this section, object erasure with Samsung Galaxy AI and AI edits
-made on a Xiaomi phone left no AI declaration in the metadata (no C2PA manifest, no XMP
-digital source type), only traces of editing. No Content Credentials, or a manifest that
+An edit made with AI can leave no AI declaration in the file's metadata: no C2PA
+manifest and no XMP digital source type. No Content Credentials, or a manifest that
 declares no AI source type, says nothing about whether AI was used.
 
 ### Trust lists
@@ -2024,9 +2037,11 @@ Set them for every case in the app's config, or for one run on the command line
 A list that cannot be read stops the reading with that reason; GLEAPP never falls back
 to another list silently. Each record lists the trust lists it was read with, by
 label and SHA-256 (never by the file's path on your machine), and for a signer on a
-trust list names the one it chained to. When the manifest is not valid, that row says it
-names who signed the manifest, not who stands behind this content: a manifest signed by a
-listed signer and carried over to other content still chains to the list. A signer that chains only to the **TSA** list
+trust list names the one it chained to. When the claim signature does not verify, that
+row says the certificate does not show who signed; when the manifest does not validate
+otherwise, that the list vouches for nothing in it: a manifest signed by a listed signer
+and carried over to other content still chains to the list. A signer that chains only to
+the **TSA** list
 is recorded as valid with the signer not on a trust list: that list vouches for
 time-stamping authorities, not signers.
 
@@ -2044,7 +2059,7 @@ read from the copy processing already makes under the case folder.
 Validation needs **c2pa-python**, an optional extra: `pip install -e ".[provenance]"`.
 The release builds do not carry it (its native library comes without the third-party
 notices a binary distribution needs), so in them a file holding credentials is **Not
-checked: library unavailable**. Absence is still recorded without it, since that comes
+checked: the c2pa library is not installed**. Absence is still recorded without it, since that comes
 from GLEAPP's own reading of the file. The native library runs in a child process of
 its own, a batch at a time, so a fault in it costs one file and never the run.
 
@@ -2063,20 +2078,21 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
   Credentials, each state, not read yet) and **Declared source type**.
 - **Gallery mark**: a tile whose file declares a class named AI (*Generative AI*,
   *Edited using Generative AI*, *Composite including generative AI elements*) carries
-  **AI declared**, solid when a valid signature backs the declaration and dashed when
-  the manifest is not valid or the declaration is only in XMP; a file whose own manifest declares none but an ingredient does carries **AI in
+  **AI declared**, on any action of its own manifest, solid when credentials that
+  validate back the declaration and dashed when they do not or the declaration is only
+  in XMP; a file whose own manifest declares none but an ingredient does carries **AI in
   ingredient**. Hover it for what is declared, by what and in which state. It is a
   declaration, not a finding, and it changes no category. A file with no mark may still
   have been made with AI: see *What a state does not mean* above.
 - **List view** columns: *Content Credentials*, *Declared source type*, *C2PA signer*
   and *AI declaration*, the mark in words (off by default; add them from the column
   menu).
-- **Details pane**: a *Content Credentials* section with every field of the record and
-  the paragraph above.
-- **Search** covers the signer and the record (claim generator, declared actions,
-  ingredients, codes).
+- **Details pane**: a *Content Credentials* section with the state, the signer, what is
+  declared, the trust list, the failures, the ingredients and when and with what it was
+  read, and the paragraph above. The CSV and JSON exports carry the whole record.
+- **Search** covers the signer.
 - **Exports**: CSV columns `c2pa_state`, `c2pa_dst_class`, `c2pa_signer`,
-  `c2pa_xmp_dst` and `c2pa_info` (the whole record as JSON); the JSON export carries
+  `c2pa_xmp_dst` (the URI the XMP declares) and `c2pa_info` (the whole record as JSON); the JSON export carries
   the record as an object and the paragraph above as `c2pa_caveat`; the HTML report
   offers a *Content Credentials* field (not on by default); LAVA's Media Files gains
   *Content Credentials*, *Declared Source Type*, *C2PA Signer* and *Content
@@ -2090,8 +2106,6 @@ its own, a batch at a time, so a fault in it costs one file and never the run.
 - IPTC Digital Source Type NewsCodes vocabulary,
   <https://cv.iptc.org/newscodes/digitalsourcetype/>, the release of 2024-10-23 (labels
   and definitions; the suite holds GLEAPP's classes to a copy of it).
-- See also NIST AI 100-4 and SWGDE 18-I-001, which this manual has not been checked
-  against section by section.
 
 ## 21. Credits & acknowledgments
 

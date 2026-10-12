@@ -260,7 +260,7 @@ def test_a_configured_list_that_cannot_be_read_is_reported_never_swapped(tmp_pat
     p.write_bytes(_jpeg_with_store())
     rec = pv.read_provenance(p)
     assert rec["state"] == "not_checked"
-    assert rec["state_reason"].startswith("C2PA not checked: trust list could not be read")
+    assert rec["state_reason"].startswith(pv.TRUST_UNREADABLE)
     assert "gone.pem" in rec["state_reason"]
     assert str(tmp_path) not in rec["state_reason"]
     assert lib.calls == []

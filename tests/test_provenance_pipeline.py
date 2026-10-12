@@ -120,10 +120,10 @@ def test_processing_settles_what_the_bytes_can_and_leaves_the_rest_to_the_reader
         stats = process(case, workers=1, screen=False, similar=False)
         rows = _rows(case)
         assert rows["plain.jpg"]["c2pa_state"] == "absent"
-        assert rows["plain.jpg"]["c2pa_dst_class"] == "none"
+        assert rows["plain.jpg"]["c2pa_dst_class"] is None     # no manifest to declare one
         declared = json.loads(rows["declared.jpg"]["c2pa_info"])
         assert rows["declared.jpg"]["c2pa_state"] == "absent"
-        assert rows["declared.jpg"]["c2pa_dst_class"] == "none"     # never folded in
+        assert rows["declared.jpg"]["c2pa_dst_class"] is None       # never folded in
         assert declared["xmp_dst"]["label"] == "unsigned declaration"
         assert declared["xmp_dst"]["class"] == "generative_ai"
         stub = json.loads(rows["stub.jpg"]["c2pa_info"])
