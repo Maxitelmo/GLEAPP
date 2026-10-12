@@ -335,8 +335,10 @@ def _process_one_at(thumb_dir, row, local: str, *, force: bool, keyframes: int,
                 kind = sniffed
                 upd["kind"] = sniffed
 
-        # Before decoding, so a file that will not decode still has it recorded.
-        if kind in ("image", "video") and decode_path == local:
+        # Before decoding, so a file that will not decode still has it recorded. From
+        # the row's own bytes even when what is decoded came out of them (a Snapchat
+        # bundle): those are what the pass reads, so the two give one answer.
+        if kind in ("image", "video"):
             upd.update(_provenance_now(local))
 
         if kind == "image":

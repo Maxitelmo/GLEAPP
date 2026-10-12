@@ -124,6 +124,42 @@ def test_a_file_that_will_not_decode_still_has_its_credentials_read(tmp_path, mo
         case.close()
 
 
+def test_a_snapchat_bundle_is_read_from_the_bytes_the_pass_reads(tmp_path, monkeypatch):
+    """Processing decodes the picture inside a Snapchat LZC bundle, but the row's bytes
+    are the bundle's, and those are what the pass reads. Processing reads them too, so
+    the row is not left "not read yet" after it, and both give the same answer."""
+    import struct  # pylint: disable=import-outside-toplevel
+    import zstandard  # pylint: disable=import-outside-toplevel
+    from PIL import Image  # pylint: disable=import-outside-toplevel
+    from gleapp.pipeline import PROVENANCE_ROWS  # pylint: disable=import-outside-toplevel
+    _no_library(monkeypatch)
+    ev = tmp_path / "evidence"
+    ev.mkdir()
+    pic = tmp_path / "inside.png"
+    Image.effect_noise((640, 480), 60).convert("RGB").save(pic)
+    body = zstandard.ZstdCompressor().compress(pic.read_bytes())
+    head = struct.pack("<4s6I", b"LZC\x00", 1, 1, 0x20, 1, 1, len(body))
+    (ev / "lzc_bundle_9f8e7d").write_bytes(head + b"\x00" * (0x20 - len(head)) + body)
+    case = open_case(tmp_path / "case", create=True, examiner="t")
+    try:
+        ingest_sources(case, [Source(name="ev", path=str(ev))])
+        process(case, workers=1, screen=False, similar=False)
+        row = _rows(case)["lzc_bundle_9f8e7d"]
+        assert row["kind"] == "image" and row["thumb"]
+        assert row["c2pa_state"] == "not_checked"     # no container GLEAPP walks
+        unread = case.db.conn.execute(
+            f"SELECT COUNT(*) FROM files WHERE c2pa_state IS NULL AND {PROVENANCE_ROWS}"
+        ).fetchone()[0]
+        assert unread == 0
+        first = json.loads(row["c2pa_info"])["state_reason"]
+        provenance_pass(case, force=True)
+        again = case.db.get_file(row["id"])
+        assert (again["c2pa_state"], json.loads(again["c2pa_info"])["state_reason"]) == \
+            ("not_checked", first)
+    finally:
+        case.close()
+
+
 def test_processing_assigns_no_category(tmp_path, monkeypatch):
     _no_library(monkeypatch)
     case = open_case(tmp_path / "case", create=True, examiner="t")
