@@ -1141,17 +1141,28 @@ UNREADABLE = "the c2pa reader could not read the file"
 SETTLED_REASONS = (UNSUPPORTED, REMOTE_NOT_FETCHED)
 
 
-def prescan(path: str | Path) -> tuple[dict, dict | None]:
+def _now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def prescan(path: str | Path, *, library: tuple[bool, str | None] | None = None
+            ) -> tuple[dict, dict | None]:
     """(record, request). The part of a read GLEAPP does itself, from the bytes.
     ``request`` is None when the record is final; otherwise it is what the reader
-    is to be asked: ``{"path", "mime", "remote"}``."""
+    is to be asked: ``{"path", "mime", "remote"}``.
+
+    ``library`` is ``library_available()`` as a pass checked it once for all its
+    files; without it the check is made here. It lists the working directory
+    (``_planted_c2pa_library``), 12 to 14 ms on Windows, and every file the walk
+    does not settle (a GIF, a BMP, an AVI) asked for it. The child process still
+    checks before it loads the library (``_library``)."""
     path = str(path)
     record: dict[str, Any] = {
         "state": "not_checked", "codes": _codes(None), "active_dst": None,
         "ingredients": [], "xmp_dst": None, "store_in_bytes": None,
         "library_version": None, "gleapp_version": __version__,
         # a result can change with time (a certificate expires), so it is dated
-        "read_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        "read_at": _now()}
     try:
         blocks = scan_blocks(path)
     except OSError as exc:
@@ -1168,7 +1179,7 @@ def prescan(path: str | Path) -> tuple[dict, dict | None]:
         record["state"] = "absent"
         record["state_reason"] = ABSENT_BY_SCAN
         return record, None
-    usable, why = library_available()
+    usable, why = library if library is not None else library_available()
     if not usable:
         record["state_reason"] = why
         return record, None
@@ -1214,8 +1225,10 @@ def read_outcome(path: str, mime: str, settings: dict) -> dict:
 
 
 def finish(record: dict, request: dict, outcome: dict, trust: TrustLists) -> dict:
-    """``record`` completed with what the reader made of the file."""
+    """``record`` completed with what the reader made of the file, dated now: the walk
+    it was started from can have been made a whole processing run earlier."""
     kind = outcome.get("kind")
+    record["read_at"] = _now()
     record["library_version"] = outcome.get("library_version")
     record["trust_lists"] = trust.describe()
     if kind == "store":
@@ -1310,11 +1323,20 @@ def _run_reader(requests: list[dict], settings: dict, *, timeout: int, depth: in
     return out
 
 
-def read_batch(paths: Iterable[str | Path], *, trust: TrustLists) -> dict[str, dict]:
+def read_batch(paths: Iterable[str | Path], *, trust: TrustLists,
+               library: tuple[bool, str | None] | None = None,
+               prescanned: dict[str, tuple[dict, dict | None]] | None = None
+               ) -> dict[str, dict]:
     """{path: record} for many files, read with ``trust``, the c2pa reader in a child
-    process of its own. Never writes to a file."""
+    process of its own. Never writes to a file. ``library`` is as for ``prescan``,
+    checked here once for the batch when not given. ``prescanned`` is the
+    (record, request) a path's bytes already gave ``prescan`` (processing walked them),
+    so they are not walked again."""
     paths = [str(p) for p in paths]
-    pre = {p: prescan(p) for p in paths}
+    prescanned = prescanned or {}
+    if library is None and any(p not in prescanned for p in paths):
+        library = library_available()
+    pre = {p: prescanned.get(p) or prescan(p, library=library) for p in paths}
     requests = [req for _rec, req in pre.values() if req is not None]
     out = {p: rec for p, (rec, req) in pre.items() if req is None}
     if not requests:
