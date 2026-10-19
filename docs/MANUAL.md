@@ -59,8 +59,9 @@ your user settings, not in any case.
         its password, its recovery password or its startup key (`.BEK` file), and
         an APFS volume macOS encrypted in software (an external drive, or a Mac
         without a T2 chip or Apple silicon) with its password or personal recovery
-        key, the prompt showing the passphrase hint the volume stores; one you
-        leave locked is not walked and is named in the Source panel. When
+        key, the prompt showing the passphrase hint the volume stores, and a LUKS
+        container (Linux disk encryption) with its passphrase; one you leave locked
+        is not walked and is named in the Source panel. When
         you click **Create case & ingest**, GLEAPP asks for what is missing, in a
         password field or a key file field, and asks again if it does not open the
         image. What you give is held in memory until GLEAPP is closed and is never
@@ -72,15 +73,96 @@ your user settings, not in any case.
       - Filesystems are walked file by file, so each file keeps the name, path
         and dates the filesystem recorded. Supported: ext2/3/4, F2FS, FAT32,
         FAT16, FAT12, exFAT, NTFS, HFS+, HFSX, APFS, QNX4, QNX EFS, QNX ETFS, QNX IFS,
-        SquashFS, JFFS2, UBI, UBIFS, YAFFS1 and YAFFS2.
-        Unreadable volumes are named in the Source panel.
+        SquashFS, JFFS2, UBI, UBIFS, YAFFS1, YAFFS2, XFS (v4 and v5), Btrfs and
+        ReFS 3.x up to 3.14. Unreadable volumes are named in the Source panel.
+        XFS, Btrfs and ReFS come with qnxprobe 1.68. qnxprobe's own tests read
+        them against volumes the native tools wrote: XFS made by `mkfs.xfs` 6.18,
+        Btrfs by btrfs-progs 6.17.1 (no compression, zlib, zstd and LZO; zstd needs
+        Python 3.14 or later), and a ReFS 3.14 Dev Drive Windows 11 wrote, plus the
+        forefst sample volumes. GLEAPP's own ingest of those fixtures, measured
+        2026-10-16: the five XFS volumes (5,319, 4,920, 116, 525 and 525 files) and
+        seven Btrfs volumes of 572 files each, one converted from ext4 (3) and one
+        live volume (17) registered every file with the SHA-256 the fixture
+        records. The ReFS volume registered 2,547 files: 2,540 hash to the SHA-256
+        Windows recorded, and 7 were not compared: 4 Windows listed whose content
+        the fixture does not ship (big/frag_a.bin, big/frag_b.bin,
+        big/large_48MiB.bin, sparse/punched.bin), and 3 in System Volume
+        Information that Windows' own listing leaves out. An older ReFS (1.x, 2.x), or one
+        past 3.14, is named and not listed, and ReFS data in a container marked
+        compressed is refused. When such a volume is read with nothing listed, or
+        the reader has more to say (one device of a multi-device Btrfs, a log not
+        replayed, damage met), the Source panel says so in the reader's words.
       - Deleted-media recovery is separate (§16). Tick *Recover media
         (filesystem records and carving)* to run it during ingest, or run it
         later from the Source panel.
+      - **RAID member images** (one image per disk of a Linux md array, or of an
+        LVM2 volume group spread over several disks) are one source. Pick them
+        together in **Browse to file…**, or pick one: GLEAPP looks in its folder
+        for the other members by what each file records about itself (the md array
+        uuid, or the volume group and physical volume ids), never by name, and when
+        it finds any it lists them, and every other file it looked at with why it
+        was not used, and asks: **Use them** (the default), **Only the file I
+        picked**, or **Cancel**. Nothing is looked for, and nothing is asked, for an
+        image that holds every member of its arrays and volume groups (an ordinary
+        disk, or a one-disk LVM2 install). What was done is recorded in the case and
+        shown in the Source panel and the LAVA report: the members found and used,
+        your choice to read the image alone, or that none was found. Two paths that
+        open the same disk (the same file twice, a link to it, or two segments of one
+        split or E01 set) are read once, and the case says which. Logical evidence
+        (L01, AD1) or a file that is not a disk image among them is refused before
+        anything is read. A password, recovery password or passphrase is tried on
+        the BitLocker, APFS and LUKS volumes inside each member and inside each array
+        too. Each member
+        is read as it would be on its own, and each array or volume group assembled
+        from them is walked as a volume of its own, named as qnxprobe names it
+        (`md_<name>_<uuid>`, `lvm_<group>_<volume>`). A RAID1 array whose data
+        starts at the first byte of its members (metadata 0.90 or 1.0) is read from
+        its first member, as that member's own volume; the other members are listed
+        as copies of it and not walked again. Two files that may be byte copies of
+        one disk (the same size and the same first and last 1 MiB) are both read,
+        with a warning. Where each member and each array lies is recorded when the
+        set is ingested, and every later session reads each file from that place:
+        if a part cannot be produced in a session (an encrypted volume inside a
+        member left locked, an array no longer assembled), the files in it fail with
+        why, keep the hashes they were given, and no other file moves. A RAID4/5 array missing one
+        member, or a RAID6 array missing two, is rebuilt from parity when it was
+        stopped clean; an array that cannot be read is named in the Source panel
+        with why. The case records every member, and which were found rather than
+        picked; **Relink…** takes one member's new place when the others sit beside
+        it under the same names, or each member's. From the command line, give
+        several images to `gleapp ingest` for one source, or one image to have the
+        others found and listed (`--no-find-members` reads it alone). After the
+        Sources list it prints what was assembled, as qnxprobe and DLEAPP do: each
+        array and its roles, a role missing and rebuilt from parity, and a member
+        left out and why.
+      - One image whose own partitions hold two or more members of an md array (a
+        disk carved into partitions that were raided together) is read the same way,
+        as a set of that one image: the array is assembled from its partitions, as
+        qnxprobe does, walked as a volume of its own (`md_<name>_<uuid>`), and its
+        place recorded like a set's. The partitions it was assembled from are not
+        walked on their own. A passphrase given is tried on a LUKS container inside
+        that array too. A source a GLEAPP before this one already registered files
+        from keeps being read as it was. An image holding one member of an array
+        whose other members are on other disks is not read as an array on its own.
+      - A disk of a DDF or Intel IMSM (RST) array, read alone, is walked only when
+        its metadata records a mirror (RAID1) in its normal state; on any other its
+        partitions and volumes are listed as RAID members with the level and are not
+        walked, because one disk of such an array does not hold the whole of its data.
+      - A case holding such a set should not be opened with a GLEAPP older than
+        the one that made it. Cases carry no version an older release checks, so an
+        older GLEAPP opens it, reads every file after the set's first part from the
+        wrong place, and a forced processing pass there writes errors over those
+        files' records.
     - **JSON**: a GLEAPP job spec or a **Project VIC 2.0 (US)** JSON, detected
       automatically. The VIC media folder is resolved next to the file.
       MediaID, category, original path, MIME and victim-offender flags are
       imported. See §3 for how duplicate entries are handled.
+    - **C4All index**: a C4All `C4P Index.xml` (pictures) or `C4M Index.xml`
+      (movies), detected automatically. Each entry's file is opened in place
+      from the folders beside the index (`DVD01(...)` and so on), with its MD5,
+      SHA-1, size, times and original path; a category other than 0 is kept as
+      the same code. Pick both indexes together to add both. Entries whose file
+      is not there are registered with *file not found on disk*.
 
 **Ingest options** (under **Processing options**, collapsed until you click it):
 
@@ -152,13 +234,18 @@ environment variable holding it), both written before the subcommand like `-c`.
 Either can be given more than once when a case holds several encrypted images;
 each password is tried on each image, on each BitLocker volume inside one as a
 password and as a recovery password, and on each encrypted APFS volume inside one as a
-password and as a personal recovery key. An image sealed to a certificate takes the
+password and as a personal recovery key, and on each LUKS container inside one as a
+passphrase. An image sealed to a certificate takes the
 certificate's private key with `--private-key <file>`, and a BitLocker volume its
 startup key with `--bitlocker-key <file>`; both can be repeated. With none of
 these, GLEAPP asks at the terminal, and without a terminal it stops and says which
-option to use, except for a BitLocker or APFS volume: that one is left locked, named
+option to use, except for a BitLocker, APFS or LUKS volume: that one is left locked, named
 in a warning (with an APFS volume's passphrase hint) and not walked, and the rest of the
-image is read. What you give is held
+image is read. The warning names the option that takes what opens the volume only when
+nothing was given; when something was given and did not open it, the reader's reason
+stands alone. A LUKS container no passphrase can be tried on (without the pycryptodome
+package, for example) is named in a warning with the reader's reason when a passphrase
+was given, since it was not tried there. What you give is held
 for that one command, so `process`, `report`, `source stage` and `source carve`
 need it again. A password is never taken on the command line itself, where other
 users of the machine and the shell history could read it.
@@ -266,7 +353,7 @@ Beside the menu:
 
 | Button | What it does |
 |---|---|
-| **+ Add evidence…** | Ingests another folder, extraction archive, disk image (E01 or raw) or Project VIC / job JSON into this case. |
+| **+ Add evidence…** | Ingests another folder, extraction archive, disk image (E01 or raw), Project VIC / job JSON or C4All index XML into this case. |
 | **⇤ Close case** | Snapshots first. |
 | **Details pane**, **Export report** | Toggle the pane; open the export dialog. |
 | **↻ Refresh** | Re-runs the current filter, so files that no longer match (e.g. ones you just categorized) drop out. |
@@ -1468,8 +1555,8 @@ already give you.
   `hdiutil segment` split into `.dmgpart` files, point at the `.dmg` and keep the
   `.dmgpart` files beside it; a missing one is refused and named. For a sparse bundle,
   point at the `.sparsebundle` folder: on a Mac the file dialog lists it as one item,
-  and on Windows or Linux use the folder button. An LZFSE-compressed `.dmg` needs
-  `pyliblzfse`, which GLEAPP's requirements install.
+  and on Windows or Linux use the folder button. An LZFSE-compressed `.dmg` is read
+  by the vendored ewfprobe's own decoder (since 0.14.0), with nothing to install.
 - **AFM and AFF4**: point at the `.afm`, with its raw files beside it, or at the
   `.aff4` (for a striped AFF4, at any of its files).
 - **Virtual machine disk**: point at the `.vhd`, `.vhdx`, `.vmdk` or `.qcow2`. A
@@ -1478,7 +1565,8 @@ already give you.
 - **Encrypted Apple disk image or sparse bundle, encrypted AFF, or an E01, SMART or
   raw set FTK Imager encrypted with AD encryption**: point at it as above; GLEAPP asks
   for its password, or for one sealed to a certificate, its private key (§1). A
-  BitLocker or encrypted APFS volume inside an image is asked about the same way.
+  BitLocker volume, encrypted APFS volume or LUKS container inside an image is asked
+  about the same way.
 - **Not accepted**: logical evidence, EnCase's (`.L01`) and FTK Imager's (`.ad1`),
   which holds copies of files rather than a disk and is refused with that reason,
   including an AD-encrypted set that turns out to hold one.
@@ -1590,11 +1678,14 @@ recovering files no surviving record names.
   offset 4,211,712), and its date columns are blank.
 - Carved files are read back on demand by seeking to that offset, so the
   acquisition has to stay where the case recorded it.
-- **Seven signatures and nothing else**: JPEG, PNG, GIF, WebP and HEIC/AVIF as
-  images, AVI and MP4/MOV as video. No documents, archives or databases.
+- **Eleven signatures and nothing else**: JPEG, PNG, GIF, WebP, HEIC/AVIF, TIFF
+  and BMP as images, AVI, MP4/MOV/3GP, Matroska/WebM and Ogg with Theora as video.
+  No audio (GLEAPP has no audio kind), and no documents, archives or databases,
+  which mediacarve can carve but GLEAPP does not ask it for.
 - Each kind has a size ceiling so a false header cannot claim the rest of the
-  disk (64 MB for the stills, 32 MB for GIF, 4 GB for video) and a floor so a
-  header with nothing behind it is not reported as a file.
+  disk (64 MB for JPEG, PNG, WebP and HEIC, 32 MB for GIF, 1 GB for BMP, 4 GB for
+  TIFF and for video) and a floor so a header with nothing behind it is not
+  reported as a file.
 - A carved file never runs past its ceiling, the end of the image or, in a
   scoped carve, the end of the free run it was found in. One cut at any of those
   is the start of a file and not the whole of it.
@@ -1611,7 +1702,7 @@ recovering files no surviving record names.
 
 ### Which filesystems can do what
 
-The walk reads twenty-two kinds, but the other two passes need more of a
+The walk reads twenty-five kinds, but the other two passes need more of a
 filesystem than the walk does:
 
 | Filesystem | Walked | Deleted records | Free space, for scoping |
@@ -1622,6 +1713,8 @@ filesystem than the walk does:
 | ext2 / ext3 / ext4 | yes | no | **no** |
 | QNX4, EFS, ETFS, IFS | yes | no | **no** |
 | SquashFS, JFFS2, UBI, UBIFS, YAFFS1, YAFFS2 | yes | no | **no** |
+| XFS, Btrfs | yes | no | yes |
+| ReFS | yes | no | **no** |
 
 So on a Mac or Linux acquisition nothing comes back with its name, and on a
 disk holding any volume that cannot report its free space the scan falls back
@@ -1652,10 +1745,15 @@ partition on a dual-boot disk is enough to do that.
 - An E01, Ex01 or AFF carries the acquiring tool's own hash of the disk when the
   tool recorded one, and a raw image carries none. So a raw source is identified, when it is relinked or its copies
   dropped, by its size and a hash of its first and last 4 MiB, which tells two
-  images of one size apart and no more.
+  images of one size apart and no more. Because that says nothing about the
+  middle of the disk, relinking it or dropping its copies also reads back every
+  file the case has already hashed, and is refused if any of them has changed
+  or cannot be read. That is one read of every hashed file, so it takes longer
+  the more the case holds.
 - An Apple disk image records checksums of its stored data but no hash of the
   disk, so, like an acquisition that recorded none, it is identified by its size
-  alone when it is relinked or its copies dropped.
+  when it is relinked or its copies dropped, and its hashed files are read back
+  the same way.
 - An image whose partition table describes a volume larger than the file holds
   (a split set with its later segments missing, or a truncated image) is walked
   as far as it goes, and the Source panel says which volume is not all there.
@@ -2142,6 +2240,7 @@ This product includes software developed by SecureAuth Corporation
 | **pyliblzfse** + **LZFSE** | decoding Apple LZFSE-compressed assets | Ivan Kozík (bindings); LZFSE by Apple Inc. | BSD-3 |
 | **python-zstandard** + **Zstandard** | decoding Zstd-compressed assets | Gregory Szorc (bindings); Zstd by Meta / Yann Collet | BSD-3 |
 | **py7zr** (+ pyppmd, pybcj, inflate64, brotli, pycryptodomex) | reading `.7z` archives found inside a source | Hiroshi Miura & contributors | LGPL-2.1 (py7zr) / MIT / BSD |
+| **argon2-cffi** (+ argon2-cffi-bindings) | Argon2 key derivation, to open a LUKS2 container | Hynek Schlawack & contributors | MIT |
 | **pypdf** (+ pycryptodome) | reading the images and embedded files inside a PDF, including an encrypted one | Mathieu Fenniak & contributors; pycryptodome by Helder Eijs | BSD-3 / BSD-2 and public domain |
 | **Flask** and the **Pallets** stack (Werkzeug, Jinja, Click, MarkupSafe, ItsDangerous, Blinker) | the local review-gallery server | Pallets, Armin Ronacher & contributors | BSD-3 |
 | **tzdata** / **IANA Time Zone Database** | timezone conversion and DST for the display-timezone setting | IANA (data, public domain); PyPI packaging by the CPython team | Public domain / Apache-2.0 |

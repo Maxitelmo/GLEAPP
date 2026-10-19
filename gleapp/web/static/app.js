@@ -4070,23 +4070,23 @@ $("#vicExportDlg").addEventListener("click", e => {
 // launcher exposed a way to call it). Kept as its own small state object
 // rather than reusing Lr.sources, which belongs to the case-less launcher.
 const AE = { sources: [] };
-function aeAddSource(p) {
-  p = (p || "").trim().replace(/^["']|["']$/g, "");
-  if (!p) return;
-  const kind = /\.json$/i.test(p) ? "spec" : ARCHIVE_RE.test(p) ? "archive" : "folder";
-  if (!AE.sources.some(s => s.path === p)) AE.sources.push({ kind, path: p });
+async function aeAddSource(p, discover = true) {
+  const list = Array.isArray(p) ? p : [p];
+  const got = discover ? await evidenceEntries(list) : membersSources(list, null, "only");
+  for (const e of got)
+    if (!AE.sources.some(s => s.path === e.path)) AE.sources.push(e);
   aeRenderSources();
 }
 function aeRenderSources() {
-  const icon = { spec: "\u{1F4C4} ", archive: "\u{1F4E6} " };   // 📄  📦  📁
+  const icon = { spec: "\u{1F4C4} ", archive: "\u{1F4E6} ", set: "\u{1F4E6} " };   // 📄  📦  📁
   $("#aeList").innerHTML = AE.sources.map((s, i) =>
-    `<div class="s"><span>${icon[s.kind] || "\u{1F4C1} "}${esc(s.path)}</span>
+    `<div class="s"><span title="${esc((s.paths || [s.path]).join("\n"))}">${icon[s.kind] || "\u{1F4C1} "}${esc(sourceLabel(s))}</span>
      <b data-rm="${i}" style="cursor:pointer;color:var(--danger)">×</b></div>`).join("");
   $("#aeList").querySelectorAll("[data-rm]").forEach(b =>
     b.onclick = () => { AE.sources.splice(+b.dataset.rm, 1); aeRenderSources(); });
 }
-$("#aeAddFolder").onclick = async () => aeAddSource(await pick("folder"));
-$("#aeAddFile").onclick = async () => aeAddSource(await pick("ingestfile"));
+$("#aeAddFolder").onclick = async () => aeAddSource(await pick("folder"), false);
+$("#aeAddFile").onclick = async () => aeAddSource(await pickMany("ingestfile"));
 $("#aeAdd").onclick = () => { aeAddSource($("#aeTypePath").value); $("#aeTypePath").value = ""; };
 $("#aeTypePath").addEventListener("keydown", e => {
   if (e.key === "Enter") { aeAddSource($("#aeTypePath").value); $("#aeTypePath").value = ""; }
@@ -4118,8 +4118,10 @@ $("#aeGo").onclick = async () => {
   const specs = AE.sources.filter(s => s.kind === "spec").map(s => s.path);
   // folders and archives both go through parse_source_spec server-side, which
   // detects an archive (or a disk image, E01 or raw) from its bytes and ingests it as one.
-  const folders = AE.sources.filter(s => s.kind === "folder" || s.kind === "archive")
-    .map(s => ({ name: s.path.split(/[\\/]/).filter(Boolean).pop(), path: s.path }));
+  const folders = AE.sources.filter(s => s.kind === "folder" || s.kind === "archive" || s.kind === "set")
+    .map(sourceBody)
+    // every spec file after the first goes as a source of its own (C4P and C4M together)
+    .concat(specs.slice(1).map(path => ({ path })));
   $("#aeGo").disabled = true;
   const ing = await postIngest({
     spec: specs[0] || null, sources: folders,
@@ -4243,14 +4245,184 @@ async function pick(kind, label) {
     archive: "Path to the extraction archive or disk image (zip, tar, tar.gz/bz2/xz, E01, Ex01, AFF, AFF4, DMG, VHD, VHDX, VMDK, QCOW2, raw .img/.dd or any segment of a split set):",
     basemap: "Path to a basemap file (.pmtiles or .mbtiles):",
     casefile: "Path to the case.gleapp file:",
-    ingestfile: "Path to the evidence file (extraction archive, E01, Ex01, AFF, AFF4, DMG, virtual machine disk or raw disk image, or .json job/VIC file):"
+    ingestfile: "Path to the evidence file (extraction archive, E01, Ex01, AFF, AFF4, DMG, virtual machine disk or raw disk image, or .json job/VIC file, or C4All index .xml):"
     }[kind]
     || "Path to .json job file:")) || null;
 }
+// Several evidence files at once: the member images of one RAID set. The desktop
+// dialog allows several; typed, it is one path. Resolves to a list of paths, or null.
+async function pickMany(kind, label) {
+  if (Lr.native) {
+    try {
+      const r = await api("/api/pick", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, multiple: true })
+      });
+      if (r && !r.error) return (r.paths && r.paths.length) ? r.paths : (r.path ? [r.path] : null);
+      if (r && r.error) toast("File dialog: " + r.error + ". Type the path instead.");
+    } catch (e) {
+      toast("File dialog unavailable. Type the path instead.");
+    }
+  }
+  const typed = await askText(label || "Path to the evidence file (extraction archive, E01, Ex01, AFF, AFF4, DMG, virtual machine disk or raw disk image, or .json job/VIC file, or C4All index .xml):");
+  return typed ? [typed] : null;
+}
+
+/* ---------- RAID member images ---------- */
+// What one evidence entry becomes, given what the server found beside it
+// (/api/source/members) and the examiner's choice: "use" reads the image picked
+// and the members found with it as one source, "only" the image picked alone,
+// "cancel" adds nothing. Several paths picked together are one source as given.
+function membersSources(paths, found, choice) {
+  const clean = (paths || []).map(p => String(p || "").trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+  if (!clean.length || choice === "cancel") return [];
+  if (clean.length > 1) return [{ kind: "set", path: clean[0], paths: clean, found: [] }];
+  const p = clean[0];
+  const kind = SPEC_RE.test(p) ? "spec" : ARCHIVE_RE.test(p) ? "archive" : "folder";
+  // what the search found and what the examiner did with it, which the case records
+  const discovery = (c) => ({ choice: c, added: (found.added || []).map(a => a.path),
+    unused: (found.unused || []).map(u => ({ path: u.path, why: u.why })),
+    missing: found.missing || [] });
+  if (!found || !found.searched) return [{ kind, path: p }];
+  if (!(found.added || []).length) return [{ kind, path: p, discovery: discovery("nothing-added") }];
+  if (choice !== "use") return [{ kind, path: p, discovery: discovery("only") }];
+  return [{ kind: "set", path: found.paths[0], paths: found.paths.slice(),
+            found: found.added.map(a => a.path), discovery: discovery("used") }];
+}
+// What a key does in the member dialog: Enter activates the button that has the
+// focus ("Use them" has it when the dialog opens, so it is the default) and nothing
+// when no button has it; Escape cancels.
+// Where Tab (or Shift+Tab, ``back``) moves the focus among the dialog's ``count``
+// controls from the one at ``at`` (-1 when the focus is outside it): round, never out.
+function membersTab(at, count, back) {
+  if (!count) return -1;
+  if (at < 0) return back ? count - 1 : 0;
+  return back ? (at - 1 + count) % count : (at + 1) % count;
+}
+function membersKey(key, focused) {
+  if (key === "Escape") return "cancel";
+  if (key === "Enter") return focused || null;
+  return null;
+}
+// Shown only when the search would add files. Resolves to "use" (the button focused
+// when it opens), "only" or "cancel" (Escape).
+function askMembers(picked, found) {
+  return new Promise(resolve => {
+    const name = p => String(p).split(/[\\/]/).filter(Boolean).pop();
+    const wrap = document.createElement("div");
+    wrap.id = "membersDlg";
+    wrap.style.cssText = "position:fixed;inset:0;z-index:10000;display:flex;"
+      + "align-items:center;justify-content:center;background:rgba(0,0,0,.45)";
+    const added = found.added || [], unused = found.unused || [];
+    const warn = (found.warnings || []).map(w =>
+      `<div style="color:var(--danger);margin-bottom:6px">${esc(w)}</div>`).join("");
+    const missing = (found.missing || []).map(m => `<li>${esc(m)}</li>`).join("");
+    wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:var(--panel);color:var(--fg);
+        border:1px solid var(--line);border-radius:8px;padding:16px 18px;min-width:360px;
+        max-width:min(720px,92vw);max-height:85vh;overflow:auto">
+      <div style="margin-bottom:8px"><b>${esc(name(picked))}</b> is a member of a RAID set.
+        ${added.length} other member image${added.length === 1 ? " was" : "s were"} found beside it,
+        by what each file records about itself:</div>
+      ${warn}
+      <ul data-added style="margin:4px 0 10px 18px;padding:0">${added.map(a =>
+        `<li title="${esc(a.path)}"><b>${esc(name(a.path))}</b>: ${esc(a.why)}</li>`).join("")}</ul>
+      ${missing ? `<div style="margin-bottom:4px">Not found in any file:</div>
+        <ul style="margin:4px 0 10px 18px;padding:0">${missing}</ul>` : ""}
+      ${unused.length ? `<details style="margin-bottom:10px"><summary>Not used (${unused.length})</summary>
+        <ul data-unused style="margin:4px 0 0 18px;padding:0">${unused.map(u =>
+          `<li title="${esc(u.path)}">${esc(name(u.path))}: ${esc(u.why)}</li>`).join("")}</ul></details>` : ""}
+      <div style="font-size:12px;opacity:.8">Used, they are read as one source with the image
+        picked, and the case records which were found rather than picked.</div>
+      <div style="margin-top:12px;text-align:right">
+        <button type="button" data-r="cancel">Cancel</button>
+        <button type="button" data-r="only">Only the file I picked</button>
+        <button type="button" data-r="use" class="ok">Use them</button></div>
+    </div>`;
+    const done = v => { document.removeEventListener("keydown", key, true); wrap.remove(); resolve(v); };
+    const key = e => {
+      const inside = document.activeElement && wrap.contains(document.activeElement);
+      if (e.key === "Tab") {
+        // focus stays in the dialog: Tab and Shift+Tab cycle through its controls
+        const stops = [...wrap.querySelectorAll("button, summary")];
+        const next = membersTab(inside ? stops.indexOf(document.activeElement) : -1,
+                                stops.length, e.shiftKey);
+        e.preventDefault(); e.stopPropagation();
+        if (next >= 0) stops[next].focus();
+        return;
+      }
+      const focused = inside ? document.activeElement.closest("[data-r]") : null;
+      const got = membersKey(e.key, focused ? focused.dataset.r : null);
+      if (got) { e.preventDefault(); e.stopPropagation(); done(got); }
+      else if (e.key === "Enter") {
+        // Enter on the dialog's own disclosure works as usual; it never reaches the
+        // page behind the dialog
+        e.stopPropagation();
+        if (!inside) e.preventDefault();
+      }
+    };
+    document.addEventListener("keydown", key, true);
+    wrap.onclick = e => {
+      const b = e.target.closest("[data-r]");
+      if (b) done(b.dataset.r);
+    };
+    document.body.appendChild(wrap);
+    wrap.querySelector('[data-r="use"]').focus();
+  });
+}
+// The entries one pick or typed path adds: several paths are one source; one disk
+// image that belongs to a RAID set has the other members looked for beside it, and
+// the examiner is asked only when the search would add files.
+async function evidenceEntries(paths) {
+  let clean = (paths || []).map(p => String(p || "").trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+  // index files picked together (C4P and C4M) are a source each, not a disk set
+  if (clean.length > 1 && clean.every(p => SPEC_RE.test(p)))
+    return clean.flatMap(p => membersSources([p], null, "only"));
+  if (clean.length > 1) {
+    // picked together: one source, each disk once. Paths that open a disk already
+    // picked are said and dropped; anything not a disk image is refused here.
+    let r = null;
+    try {
+      r = await api("/api/source/members", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: clean })
+      });
+    } catch (e) { r = { error: true, message: "request failed" }; }
+    if (!r || r.error) { toast((r && r.message) || "Those files cannot be read as one source"); return []; }
+    if ((r.same || []).length && !await askConfirm("Some of the files picked are the same disk:\n\n"
+        + r.same.join("\n") + `\n\nRead the ${r.paths.length} different disk image${r.paths.length === 1 ? "" : "s"}?`))
+      return [];
+    if ((r.copies || []).length && !await askConfirm("Some of the files picked may be copies of one disk:\n\n"
+        + r.copies.join("\n") + "\n\nRead them all anyway?"))
+      return [];
+    clean = r.paths;
+    if (clean.length > 1) return membersSources(clean, null, "only");
+  }
+  if (clean.length !== 1 || SPEC_RE.test(clean[0]) || ARCHIVE_RE.test(clean[0]))
+    return membersSources(clean, null, "only");
+  let found = null;
+  try {
+    found = await api("/api/source/members", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: clean[0] })
+    });
+  } catch (e) { found = null; }
+  if (!found || found.error || !(found.added || []).length)
+    return membersSources(clean, found && !found.error ? found : null, "only");
+  return membersSources(clean, found, await askMembers(clean[0], found));
+}
+const sourceLabel = s => s.kind === "set"
+  ? `${s.path} (+${s.paths.length - 1} member image${s.paths.length === 2 ? "" : "s"})`
+  : s.path;
+const sourceBody = s => ({ name: s.path.split(/[\\/]/).filter(Boolean).pop(), path: s.path,
+  ...(s.kind === "set" ? { paths: s.paths, found: s.found } : {}),
+  ...(s.discovery ? { discovery: s.discovery } : {}) });
+
 function renderSources() {
-  const icon = { spec: "\u{1F4C4} ", archive: "\u{1F4E6} " };   // 📄  📦  📁
+  const icon = { spec: "\u{1F4C4} ", archive: "\u{1F4E6} ", set: "\u{1F4E6} " };   // 📄  📦  📁
   $("#srcList").innerHTML = Lr.sources.map((s, i) =>
-    `<div class="s"><span>${icon[s.kind] || "\u{1F4C1} "}${esc(s.path)}</span>
+    `<div class="s"><span title="${esc((s.paths || [s.path]).join("\n"))}">${icon[s.kind] || "\u{1F4C1} "}${esc(sourceLabel(s))}</span>
      <b data-rm="${i}" style="cursor:pointer;color:var(--danger)">×</b></div>`).join("");
   $("#srcList").querySelectorAll("[data-rm]").forEach(b =>
     b.onclick = () => { Lr.sources.splice(+b.dataset.rm, 1); renderSources(); });
@@ -4505,16 +4677,18 @@ $("#openBrowse").onclick = async () => { const p = await pick("folder"); if (p) 
 $("#openBrowseFile").onclick = async () => { const p = await pick("casefile"); if (p) $("#openPath").value = p; };
 $("#openGo").onclick = () => $("#openPath").value && openCase($("#openPath").value.trim());
 $("#newBrowse").onclick = async () => { const p = await pick("folder"); if (p) $("#newPath").value = p; };
+// a job file, a Project VIC case or a C4All report index
+const SPEC_RE = /\.(json|xml)$/i;
 const ARCHIVE_RE = /\.(zip|tar|tgz|tbz2?|txz|tar\.(gz|bz2|xz))$/i;
-function addSource(p) {
-  p = (p || "").trim().replace(/^["']|["']$/g, "");
-  if (!p) return;
-  const kind = /\.json$/i.test(p) ? "spec" : ARCHIVE_RE.test(p) ? "archive" : "folder";
-  if (!Lr.sources.some(s => s.path === p)) Lr.sources.push({ kind, path: p });
+async function addSource(p, discover = true) {
+  const list = Array.isArray(p) ? p : [p];
+  const got = discover ? await evidenceEntries(list) : membersSources(list, null, "only");
+  for (const e of got)
+    if (!Lr.sources.some(s => s.path === e.path)) Lr.sources.push(e);
   renderSources();
 }
-$("#addFolder").onclick = async () => addSource(await pick("folder"));
-$("#addFile").onclick = async () => addSource(await pick("ingestfile"));
+$("#addFolder").onclick = async () => addSource(await pick("folder"), false);
+$("#addFile").onclick = async () => addSource(await pickMany("ingestfile"));
 $("#srcTypeAdd").onclick = () => { addSource($("#srcTypePath").value); $("#srcTypePath").value = ""; };
 $("#srcTypePath").addEventListener("keydown", e => {
   if (e.key === "Enter") { addSource($("#srcTypePath").value); $("#srcTypePath").value = ""; }
@@ -4545,8 +4719,10 @@ $("#createGo").onclick = async () => {
   const specs = Lr.sources.filter(s => s.kind === "spec").map(s => s.path);
   // folders and archives both go through parse_source_spec server-side, which
   // detects an archive from its bytes and ingests it as one.
-  const folders = Lr.sources.filter(s => s.kind === "folder" || s.kind === "archive")
-    .map(s => ({ name: s.path.split(/[\\/]/).filter(Boolean).pop(), path: s.path }));
+  const folders = Lr.sources.filter(s => s.kind === "folder" || s.kind === "archive" || s.kind === "set")
+    .map(sourceBody)
+    // every spec file after the first goes as a source of its own (C4P and C4M together)
+    .concat(specs.slice(1).map(path => ({ path })));
   $("#jobMsg").textContent = "Starting ingest…";
   const ing = await postIngest({
     spec: specs[0] || null, sources: folders,
@@ -4563,23 +4739,26 @@ $("#createGo").onclick = async () => {
 // An encrypted image (an Apple disk image, an encrypted AFF, or an E01, SMART or raw
 // set FTK Imager encrypted with AD encryption) opens with its password, or, when it is
 // sealed to a certificate, with that certificate's private key; a BitLocker volume in
-// an image opens with its password, recovery password or startup key, and an encrypted
-// APFS volume with its password or personal recovery key. The server holds them in
+// an image opens with its password, recovery password or startup key, an encrypted
+// APFS volume with its password or personal recovery key, and a LUKS container with
+// its passphrase. The server holds them in
 // memory for this session only, and nothing here keeps them. A password is asked for
 // in a field that hides what is typed, not with prompt(). A key file is named by its
 // path on this machine, which the server reads.
 //
 // ``n`` is what the server says is locked: its ``name``, ``needs`` ("password",
-// "private key", "bitlocker" or "apfs", with the volume's ``volume`` label when known)
+// "private key", "bitlocker", "apfs" or "luks", with the volume's ``volume`` label when known)
 // and ``wrong``. Resolves to {password}, {private_key}, {secret} or {key_file}, to
 // "skip" for a volume left locked, or to null.
 function askKey(n) {
   return new Promise(resolve => {
     const bl = n.needs === "bitlocker", ap = n.needs === "apfs", pk = n.needs === "private key";
-    const vol = bl || ap;
-    const kind = ap ? "encrypted APFS volume" : "BitLocker volume", article = ap ? "an" : "a";
+    const lu = n.needs === "luks";
+    const vol = bl || ap || lu;
+    const kind = ap ? "encrypted APFS volume" : lu ? "LUKS container" : "BitLocker volume";
+    const article = ap ? "an" : "a";
     const who = vol
-      ? (n.volume ? `the ${kind} <b>${esc(n.volume)}</b> of <b>${esc(n.name)}</b>`
+      ? (n.volume ? `the ${kind} ${lu ? "in " : ""}<b>${esc(n.volume)}</b> of <b>${esc(n.name)}</b>`
                   : `${article} ${kind} in <b>${esc(n.name)}</b>`)
       : `<b>${esc(n.name)}</b>`;
     let lead;
@@ -4596,6 +4775,8 @@ function askKey(n) {
       <input type="password" data-secret autocomplete="off" style="width:100%;box-sizing:border-box">`
       + fileRow("or the path of its startup key (.BEK) file:", "bitlockerkey");
     else if (ap) fields = `<div>Its password or personal recovery key:</div>
+      <input type="password" data-secret autocomplete="off" style="width:100%;box-sizing:border-box">`;
+    else if (lu) fields = `<div>Its passphrase:</div>
       <input type="password" data-secret autocomplete="off" style="width:100%;box-sizing:border-box">`;
     else fields = `<div>Its password:</div>
       <input type="password" data-secret autocomplete="off" style="width:100%;box-sizing:border-box">`;
@@ -4616,7 +4797,7 @@ function askKey(n) {
     wrap.querySelector("form").onsubmit = e => {
       e.preventDefault();
       if (pk) return done({ private_key: file.value });
-      if (ap) return done({ secret: secret.value });
+      if (ap || lu) return done({ secret: secret.value });
       if (!bl) return done({ password: secret.value });
       return done(secret.value ? { secret: secret.value } : { key_file: file.value });
     };
@@ -4632,17 +4813,18 @@ function askKey(n) {
   });
 }
 
-// POST /api/case/ingest; when the server names encrypted images, or BitLocker or
-// encrypted APFS volumes in images, it cannot open yet, ask for each one and post
+// POST /api/case/ingest; when the server names encrypted images, or BitLocker volumes,
+// encrypted APFS volumes or LUKS containers in images, it cannot open yet, ask for
+// each one and post
 // again with what was given.
 async function postIngest(body) {
   const passwords = {}, private_keys = {}, bitlocker = {}, bitlocker_skip = [];
-  const apfs = {}, apfs_skip = [];
+  const apfs = {}, apfs_skip = [], luks = {}, luks_skip = [];
   for (;;) {
     const r = await api("/api/case/ingest", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, passwords, private_keys, bitlocker, bitlocker_skip,
-                             apfs, apfs_skip })
+                             apfs, apfs_skip, luks, luks_skip })
     }).catch(() => ({ error: true, message: "request failed" }));
     if (!r.needs_password) return r;
     for (const n of r.needs_password) {
@@ -4650,6 +4832,7 @@ async function postIngest(body) {
       if (got === null) {
         const what = n.needs === "bitlocker" ? "a BitLocker key"
           : n.needs === "apfs" ? "an APFS volume's password"
+          : n.needs === "luks" ? "a LUKS container's passphrase"
           : n.needs === "private key" ? "its private key" : "its password";
         return { error: true, message: `${n.name} needs ${what}` };
       }
@@ -4657,6 +4840,8 @@ async function postIngest(body) {
         if (got === "skip") bitlocker_skip.push(n.path); else bitlocker[n.path] = got;
       } else if (n.needs === "apfs") {
         if (got === "skip") apfs_skip.push(n.path); else apfs[n.path] = got;
+      } else if (n.needs === "luks") {
+        if (got === "skip") luks_skip.push(n.path); else luks[n.path] = got;
       } else if (n.needs === "private key") private_keys[n.path] = got.private_key;
       else passwords[n.path] = got.password;
     }
@@ -4738,6 +4923,42 @@ function renderSourcePanel(list) {
                         + ` ${_snapBytes(v.size || 0)} past the end of the image)`).join("; ")
           + `</div>`;
       }
+      // Chunks of the acquisition the walk read with zeros where their stored data
+      // ran out (ewfprobe's padded_chunks): a file read from them can hold zeros.
+      const padded = s.padded_chunks || [];
+      if (padded.length) {
+        vols += `<div style="font-size:11px;margin-top:2px;color:var(--danger)"`
+          + ` title="The acquisition stores less data for these chunks than the bytes`
+          + ` they cover, so the reader read zeros in place of the rest. Only the chunks`
+          + ` the walk read are known.">read with zeros: `
+          + padded.map(esc).join("; ") + `</div>`;
+      }
+      // The member images of a RAID set, every one, each with its own state and
+      // whether it was found beside the image picked, then what the reader
+      // assembled from them, in its own words.
+      const members = s.members || [];
+      if (members.length) {
+        vols += `<div class="muted" style="font-size:11px;margin-top:2px">read from `
+          + `${members.length} member image${members.length === 1 ? "" : "s"}: ` + members.map(m =>
+            `<span title="${esc(m.path)}">${esc(m.path.split(/[\\/]/).filter(Boolean).pop())}`
+            + `${m.found ? " (found beside the image picked)" : ""}`
+            + `${m.status && m.status !== "ok" ? ` <b style="color:#c98a2b">${esc(m.status)}</b>` : ""}</span>`)
+            .join(", ") + `</div>`;
+        if ((s.set_notes || []).length)
+          vols += `<div class="muted" style="font-size:11px;margin-top:2px">`
+            + s.set_notes.map(esc).join("; ") + `</div>`;
+        if ((s.raid || []).length)
+          vols += `<details style="font-size:11px;margin-top:2px"><summary class="muted">RAID`
+            + ` assembly</summary><pre style="white-space:pre-wrap;margin:2px 0">`
+            + esc(s.raid.join("\n")) + `</pre></details>`;
+      }
+      // A search for the other member images of a RAID set, and what the examiner
+      // chose: recorded in the case, so it is shown whatever was picked
+      const said = (s.discovery_lines || []).concat((s.members || []).length ? [] : (s.set_notes || []))
+        .concat(s.volume_notes || []);
+      if (said.length)
+        vols += `<div class="muted" style="font-size:11px;margin-top:2px">`
+          + said.map(esc).join(" ") + `</div>`;
       // A cloud provider's online-only placeholders: the volume names them and
       // holds none of their content, so each is a row with no copy and no hash.
       // Said here so an examiner does not read those rows as files that failed.
@@ -4845,6 +5066,8 @@ function showSourceStatus(list) {
         ? "holds BitLocker volumes, and nothing that opens them has been given this session"
         : s.locked_by === "APFS"
           ? "holds encrypted APFS volumes, and nothing that opens them has been given this session"
+        : s.locked_by === "LUKS"
+          ? "holds LUKS containers, and no passphrase that opens them has been given this session"
         : s.locked_by === "private key"
           ? "is an encrypted disk image sealed to a certificate, and its private key has not been given this session"
           : "is an encrypted disk image and its password has not been given this session";
@@ -4854,19 +5077,29 @@ function showSourceStatus(list) {
     }
     const what = s.status === "missing"
       ? "was not found at" : "has a different size or date than the case recorded, at";
+    if ((s.members || []).length) {
+      // every member image, with its own state: the set is one source and any
+      // member gone or changed stops it
+      const bad = s.members.filter(m => m.status !== "ok");
+      return `<div style="margin:2px 0"><b>${esc(s.name)}</b> is read from ${s.members.length}`
+        + ` member image${s.members.length === 1 ? "" : "s"}, and ${bad.length} of them ${bad.length === 1 ? "is" : "are"} not as the`
+        + ` case recorded: ` + bad.map(m => `<code>${esc(m.path)}</code> (${esc(m.status)})`).join(", ")
+        + `. ${note} <button data-relink="${esc(s.name)}" data-set="1" style="margin-left:8px">Relink…</button></div>`;
+    }
     return `<div style="margin:2px 0"><b>${esc(s.name)}</b> ${what} <code>${esc(s.path)}</code>. ${note}
       <button data-relink="${esc(s.name)}" style="margin-left:8px">Relink…</button></div>`;
   }).join("");
   el.querySelectorAll("[data-unlock]").forEach(b => b.onclick = async () => {
     const name = b.dataset.unlock;
-    const needs = { BitLocker: "bitlocker", APFS: "apfs", "private key": "private key" }[b.dataset.by] || "password";
+    const needs = { BitLocker: "bitlocker", APFS: "apfs", LUKS: "luks", "private key": "private key" }[b.dataset.by] || "password";
     for (let wrong = false; ; wrong = true) {
       const got = await askKey({ name, needs, wrong });
       if (got === null || got === "skip") return;
       const r = await api("/api/source/unlock", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(needs === "bitlocker" ? { name, bitlocker: got }
-          : needs === "apfs" ? { name, apfs: got } : { name, ...got })
+          : needs === "apfs" ? { name, apfs: got }
+          : needs === "luks" ? { name, luks: got } : { name, ...got })
       }).catch(() => ({ error: true, message: "request failed" }));
       if (r.error) { toast(r.message || "Unlock failed"); return; }
       if (r.ok) break;
@@ -4876,12 +5109,23 @@ function showSourceStatus(list) {
   });
   el.querySelectorAll("[data-relink]").forEach(b => b.onclick = async () => {
     const name = b.dataset.relink;
-    let p = Lr.native ? await pick("archive") : null;
-    if (!p) p = await askText(`Where is ${name} now? Full path to the archive:`);
-    if (!p) return;
+    const set = !!b.dataset.set;
+    let body;
+    if (set) {
+      // every member image, or one of them with the others beside it under the
+      // names the case recorded; each is matched by its size and its own hash
+      const ps = await pickMany("archive", `Where are ${name}'s member images now? Full path to one of them (the others beside it under the same names):`);
+      if (!ps || !ps.length) return;
+      body = ps.length > 1 ? { name, paths: ps } : { name, path: ps[0] };
+    } else {
+      let p = Lr.native ? await pick("archive") : null;
+      if (!p) p = await askText(`Where is ${name} now? Full path to the archive:`);
+      if (!p) return;
+      body = { name, path: p };
+    }
     const r = await api("/api/source/relink", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, path: p })
+      body: JSON.stringify(body)
     }).catch(() => ({ error: true, message: "request failed" }));
     if (r.error) { toast(r.message || "Relink refused"); return; }
     toast(`${name} relinked`);

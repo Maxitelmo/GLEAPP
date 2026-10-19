@@ -44,6 +44,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 AFF_PASSWORD = "ewfprobe-aff-password"
 APFS_PASSWORD = "qnxprobe-apfs-convert"
 APFS_HINT = "the qnxprobe conversion test"
+# the test passphrase cryptsetup wrote the LUKS fixtures with (qnxprobe's
+# tests/fixtures/luks-fixtures.json)
+LUKS_PASSPHRASE = "correct horse battery staple"
 _OPTS = {"screen": False, "keyframes": 0, "carve": True}
 
 
@@ -55,6 +58,11 @@ def _isolate(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(archive, "_PRIVATE_KEYS", {})
     monkeypatch.setattr(archive, "_BITLOCKER", {})
     monkeypatch.setattr(archive, "_APFS", {})
+    monkeypatch.setattr(archive, "_LUKS", {})
+    monkeypatch.setattr(archive, "_LUKS_TRIED", {})
+    monkeypatch.setattr(archive, "_LUKS_TRIED_UUID", {})
+    monkeypatch.setattr(archive, "_BITLOCKER_TRIED", {})
+    monkeypatch.setattr(archive, "_APFS_TRIED", {})
     from gleapp import hashstore, stash  # pylint: disable=import-outside-toplevel
     hashstore.close()
     stash.close()
@@ -415,6 +423,125 @@ def test_the_web_ingest_asks_for_an_apfs_password_or_leaves_the_volume_locked(tm
             assert APFS_PASSWORD.encode() not in p.read_bytes(), f"the password reached {p.name}"
 
 
+def _luks_sums() -> dict:
+    lines = (FIXTURES / "luks-fixture.sha256").read_text(encoding="utf-8").splitlines()
+    return {path: digest for digest, path in (ln.split("  ", 1) for ln in lines if ln)}
+
+
+def test_a_luks_container_is_named_as_locked_and_opens_with_its_passphrase(
+        tmp_path, monkeypatch, capsys):
+    """A LUKS2 container cryptsetup wrote with an Argon2id key slot (qnxprobe's
+    tests/fixtures): left locked without its passphrase, and with it, every file of
+    the ext4 inside read back with the hash sha256sum recorded from the mounted
+    volume."""
+    import hashlib  # pylint: disable=import-outside-toplevel
+    image = _copy(tmp_path, "luks2-argon2id.img.gz")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))            # not a terminal
+
+    locked = str(tmp_path / "locked")
+    assert cli.main(["-c", locked, "ingest", str(_job(tmp_path, image)),
+                     "--no-process"]) == 0
+    err = capsys.readouterr().err
+    assert "the LUKS container in whole image" in err and "stays locked" in err
+    assert "--password-file" in err
+    c = open_case(locked)
+    try:
+        row = {s["name"]: s for s in archive.source_status(c)}[image.name]
+        refused = json.loads(row["volumes_not_read"])
+        assert len(refused) == 1 and "(luks): LUKS2, locked" in refused[0], refused
+        assert "give its passphrase" in refused[0]
+        assert row["walked"] == 0 and row["status"] == "ok" and not row["luks"]
+    finally:
+        c.close()
+
+    passphrase = tmp_path / "luks-passphrase.txt"
+    passphrase.write_text(LUKS_PASSPHRASE + "\n", encoding="utf-8")
+    opened = str(tmp_path / "opened")
+    assert cli.main(["-c", opened, "--password-file", str(passphrase), "ingest",
+                     str(_job(tmp_path, image)), "--no-process"]) == 0
+    assert "stays locked" not in capsys.readouterr().err
+    c = open_case(opened)
+    try:
+        row = {s["name"]: s for s in archive.source_status(c)}[image.name]
+        assert json.loads(row["luks"]) == [0]
+        # the container itself is not walked: what it holds is, as its own volume
+        assert "opened with keyslot 0: what it holds is walked as luks_lba" in row[
+            "volumes_not_read"]
+        rec = archive.source_record(c, image.name)
+        files = {f["rel_path"].split("/", 1)[1]: f
+                 for f in c.db.iter_files("source = ?", (image.name,))
+                 if f["rel_path"].startswith("luks_lba")}
+        assert set(files) >= set(_luks_sums())
+        archive.close_zips()
+        monkeypatch.setattr(archive, "_LUKS", {})            # the app was restarted
+        row = {s["name"]: s for s in archive.source_status(c)}[image.name]
+        assert (row["status"], row["locked_by"]) == ("locked", "LUKS")
+        assert [(v["label"], v["open"], v["askable"]) for v in archive.luks_volumes(image)] \
+            == [("whole image", False, True)]
+        assert archive.unlock_luks(image, "not it") is False
+        assert archive.unlock_luks(image, LUKS_PASSPHRASE) is True
+        assert {s["name"]: s for s in archive.source_status(c)}[image.name]["status"] == "ok"
+        for rel, digest in _luks_sums().items():
+            copy = archive.cached_copy(c.root, rec, files[rel])
+            assert hashlib.sha256(copy.read_bytes()).hexdigest() == digest, rel
+    finally:
+        c.close()
+
+
+def test_the_web_ingest_asks_for_a_luks_passphrase_or_leaves_the_container_locked(
+        tmp_path, monkeypatch):
+    image = _copy(tmp_path, "luks1-cbc.img.gz")
+    cl = _client()
+    cl.post("/api/case/create", json={"path": str(tmp_path / "c"), "name": "c",
+                                      "examiner": "t"})
+    body = {"sources": [{"path": str(image)}],
+            "options": {**_OPTS, "carve": False}}
+    r = cl.post("/api/case/ingest", json=body)
+    assert r.status_code == 409
+    need = r.get_json()["needs_password"]
+    assert [(n["needs"], n["volume"], n["wrong"]) for n in need] == [
+        ("luks", "whole image", False)]
+    assert "give its passphrase" in need[0]["note"]
+    r = cl.post("/api/case/ingest", json={**body, "luks": {need[0]["path"]: {"secret": "not it"}}})
+    assert r.status_code == 409 and r.get_json()["needs_password"][0]["wrong"] is True
+
+    # leaving it locked reads the rest of the image and says the container was not read
+    r = cl.post("/api/case/ingest", json={**body, "luks_skip": [need[0]["path"]]})
+    assert r.status_code == 200, r.get_json()
+    assert _wait(cl)["stage"] == "done"
+    row = cl.get("/api/sources").get_json()[0]
+    assert "(luks): LUKS1, locked" in row["volumes_not_read"]
+    cl.post("/api/case/close")
+
+    cl.post("/api/case/create", json={"path": str(tmp_path / "c2"), "name": "c2",
+                                      "examiner": "t"})
+    r = cl.post("/api/case/ingest", json={**body, "luks": {
+        need[0]["path"]: {"secret": LUKS_PASSPHRASE}}})
+    assert r.status_code == 200, r.get_json()
+    assert _wait(cl)["stage"] == "done"
+    row = cl.get("/api/sources").get_json()[0]
+    # the fixture holds no media, which is all the web ingest registers: the record
+    # says the container was opened and what it holds walked as a volume of its own
+    assert row["luks"] == "[0]"
+    assert "opened with keyslot 0: what it holds is walked as luks_lba" in row[
+        "volumes_not_read"] and "locked" not in row["volumes_not_read"]
+
+    archive.close_zips()
+    monkeypatch.setattr(archive, "_LUKS", {})               # the app was restarted
+    [row] = cl.get("/api/sources").get_json()
+    assert (row["status"], row["locked_by"]) == ("locked", "LUKS")
+    r = cl.post("/api/source/unlock", json={"name": image.name, "luks": {"secret": "not it"}})
+    assert r.get_json() == {"ok": False, "wrong": True}
+    r = cl.post("/api/source/unlock", json={"name": image.name,
+                                            "luks": {"secret": LUKS_PASSPHRASE}})
+    assert r.get_json() == {"ok": True, "wrong": False}
+    assert [s["status"] for s in cl.get("/api/sources").get_json()] == ["ok"]
+    cl.post("/api/case/close")
+    for p in (tmp_path / "c2").rglob("*"):
+        if p.is_file():
+            assert LUKS_PASSPHRASE.encode() not in p.read_bytes(), f"the passphrase reached {p.name}"
+
+
 # ---- the web API -----------------------------------------------------------
 def _client():
     from gleapp.web.app import create_app  # pylint: disable=import-outside-toplevel
@@ -521,3 +648,160 @@ def test_a_source_holding_bitlocker_volumes_is_unlocked_through_the_api(tmp_path
                                             "bitlocker": {"key_file": str(bek)}})
     assert r.get_json() == {"ok": True, "wrong": False}
     assert [s["status"] for s in cl.get("/api/sources").get_json()] == ["ok"]
+
+
+def test_a_luks_container_a_wrong_passphrase_was_tried_on_says_so(tmp_path, capsys):
+    """After a passphrase that opens no keyslot, the container still locked says that,
+    in the reader's words, rather than asking as if none had been given."""
+    image = _copy(tmp_path, "luks1-cbc.img.gz")
+    [vol] = archive.luks_volumes(image)
+    assert vol["note"] == "LUKS-encrypted and not read: give its passphrase"
+    assert archive.unlock_luks(image, "not it") is False
+    [vol] = archive.luks_volumes(image)
+    assert (vol["open"], vol["askable"]) == (False, True)
+    assert vol["note"] == "LUKS-encrypted and not read: no passphrase given opens a keyslot"
+    assert archive.unlock_luks(image, LUKS_PASSPHRASE) is True
+    assert archive.luks_volumes(image)[0]["open"] is True
+
+    wrong = tmp_path / "wrong.txt"
+    wrong.write_text("not it\n", encoding="utf-8")
+    (tmp_path / "again").mkdir()
+    image2 = _copy(tmp_path / "again", "luks1-cbc.img.gz")
+    assert cli.main(["-c", str(tmp_path / "c"), "--password-file", str(wrong), "ingest",
+                     str(_job(tmp_path, image2)), "--no-process"]) == 0
+    err = capsys.readouterr().err
+    assert "stays locked" in err and "no passphrase given opens a keyslot" in err
+    assert "give its passphrase)" not in err
+    # what to give is said only when nothing was given (qnxprobe 1.72)
+    assert "Give its passphrase with" not in err
+
+
+# ---- a wrong secret, remembered ----------------------------------------------
+# What the reader says, in its own words, of a volume no secret given opens, and of
+# one given nothing (BitLocker.locked_note and ApfsLock.locked_note in the vendored
+# qnxprobe).
+BITLOCKER_NONE_OPENS = "none of the passwords or key files given opens it"
+BITLOCKER_OPENS_WITH = ("BitLocker-encrypted and not read: it opens with its password or its "
+                        "recovery password (protector id E35ADDD4-23B9-5C12-1159-E24DBEF968E9) "
+                        "or its startup key")
+APFS_NONE_OPENS = "none of the passwords given opens it"
+APFS_OPENS_WITH = f'it opens with a password (its passphrase hint, as stored: "{APFS_HINT}")'
+
+
+def _refused(case_dir, name) -> list:
+    c = open_case(case_dir)
+    try:
+        return json.loads(archive.source_record(c, name)["volumes_not_read"] or "[]")
+    finally:
+        c.close()
+
+
+def _wrong_bitlocker(tmp_path, kind) -> list:
+    """The command line's options for a wrong password, recovery password or .BEK."""
+    if kind == "startup key":
+        bek = tmp_path / "wrong.BEK"
+        bek.write_bytes(bytes(range(256)))
+        return ["--bitlocker-key", str(bek)]
+    wrong = tmp_path / "wrong.txt"
+    wrong.write_text({"password": "not it",
+                      "recovery password": "-".join(["000000"] * 8)}[kind] + "\n",
+                     encoding="utf-8")
+    return ["--password-file", str(wrong)]
+
+
+@pytest.mark.parametrize("kind", ["password", "recovery password", "startup key"])
+def test_a_bitlocker_volume_a_wrong_secret_was_tried_on_says_so(tmp_path, monkeypatch,
+                                                                capsys, kind):
+    """The console and the record both say none of the secrets given opens it, rather
+    than that it opens with its password, as if none had been given."""
+    image = _copy(tmp_path, "bitlocker-xts128.img.gz")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))            # not a terminal
+    case_dir = tmp_path / "c"
+    assert cli.main(["-c", str(case_dir), *_wrong_bitlocker(tmp_path, kind), "ingest",
+                     str(_job(tmp_path, image)), "--no-process"]) == 0
+    err = capsys.readouterr().err
+    assert "stays locked" in err and BITLOCKER_NONE_OPENS in err
+    assert "Give its password" not in err     # said only when nothing was given
+    [refused] = _refused(case_dir, image.name)
+    assert refused == ("lba0 (bitlocker): BitLocker-encrypted and not read: "
+                       f"{BITLOCKER_NONE_OPENS}; {BITLOCKER_OPENS_WITH.split(': ', 1)[1]}")
+
+
+def test_a_bitlocker_volume_opens_with_the_right_key_after_a_wrong_one(tmp_path,
+                                                                      monkeypatch, capsys):
+    image = _copy(tmp_path, "bitlocker-xts128.img.gz")
+    bek = FIXTURES / "bitlocker-xts128.BEK"
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))            # not a terminal
+    assert archive.unlock_bitlocker(image, secret="not it") is False
+    [vol] = archive.bitlocker_volumes(image)
+    assert (vol["open"], vol["askable"]) == (False, True)
+    assert BITLOCKER_NONE_OPENS in vol["note"]
+    # the right key, later in the same session, opens it and the record is clean
+    case_dir = tmp_path / "c"
+    assert cli.main(["-c", str(case_dir), *_wrong_bitlocker(tmp_path, "password"),
+                     "--bitlocker-key", str(bek), "ingest", str(_job(tmp_path, image)),
+                     "--no-process"]) == 0
+    assert "stays locked" not in capsys.readouterr().err
+    assert archive.bitlocker_volumes(image)[0] == {"label": "whole image", "open": True,
+                                                   "askable": False, "note": ""}
+    assert not _refused(case_dir, image.name)
+    c = open_case(case_dir)
+    try:
+        row = {s["name"]: s for s in archive.source_status(c)}[image.name]
+        assert row["walked"] > 600, "the SquashFS inside, 612 files"
+    finally:
+        c.close()
+
+
+def test_an_apfs_volume_a_wrong_password_was_tried_on_says_so(tmp_path, monkeypatch, capsys):
+    image = _copy(tmp_path, "apfs-converted.sparseimage.gz")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))            # not a terminal
+    case_dir = tmp_path / "c"
+    assert cli.main(["-c", str(case_dir), *_wrong_bitlocker(tmp_path, "password"), "ingest",
+                     str(_job(tmp_path, image)), "--no-process"]) == 0
+    err = capsys.readouterr().err
+    assert "stays locked" in err and APFS_NONE_OPENS in err and "it opens with" not in err
+    assert "Give its password" not in err     # said only when nothing was given
+    [refused] = _refused(case_dir, image.name)
+    assert refused == ("disk image/CONVVOL (apfs, encrypted): "
+                       f'{APFS_NONE_OPENS} (its passphrase hint, as stored: "{APFS_HINT}")')
+
+
+def test_an_apfs_volume_opens_with_the_right_password_after_a_wrong_one(tmp_path,
+                                                                       monkeypatch, capsys):
+    image = _copy(tmp_path, "apfs-converted.sparseimage.gz")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))            # not a terminal
+    assert archive.unlock_apfs(image, "not it") is False
+    [vol] = archive.apfs_volumes(image)
+    assert (vol["open"], vol["askable"], vol["hint"]) == (False, True, APFS_HINT)
+    assert vol["note"].startswith(APFS_NONE_OPENS)
+    password = tmp_path / "apfs-password.txt"
+    password.write_text(APFS_PASSWORD + "\n", encoding="utf-8")
+    case_dir = tmp_path / "c"
+    assert cli.main(["-c", str(case_dir), *_wrong_bitlocker(tmp_path, "password"),
+                     "--password-file", str(password), "ingest", str(_job(tmp_path, image)),
+                     "--no-process"]) == 0
+    assert "stays locked" not in capsys.readouterr().err
+    assert archive.apfs_volumes(image)[0]["open"] is True
+    assert not _refused(case_dir, image.name)
+    c = open_case(case_dir)
+    try:
+        assert len(json.loads(archive.source_record(c, image.name)["apfs"])) == 1
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize("fixture, said", [
+    ("bitlocker-xts128.img.gz", f"lba0 (bitlocker): {BITLOCKER_OPENS_WITH}"),
+    ("apfs-converted.sparseimage.gz", f"disk image/CONVVOL (apfs, encrypted): {APFS_OPENS_WITH}"),
+])
+def test_a_volume_given_no_secret_is_recorded_as_before(tmp_path, monkeypatch, capsys,
+                                                         fixture, said):
+    image = _copy(tmp_path, fixture)
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))            # not a terminal
+    case_dir = tmp_path / "c"
+    assert cli.main(["-c", str(case_dir), "ingest", str(_job(tmp_path, image)),
+                     "--no-process"]) == 0
+    err = capsys.readouterr().err
+    assert said.split(": ", 1)[1] in err and "given opens it" not in err
+    assert _refused(case_dir, image.name) == [said]

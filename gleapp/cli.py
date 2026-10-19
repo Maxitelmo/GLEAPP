@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, hashdb, lava, report
-from .case import open_case, parse_source_spec
+from .case import carry_options, image_set_source, open_case, parse_source_spec
 from .pipeline import ingest_sources, process
 from .similar import find_similar
 
@@ -67,8 +67,39 @@ def _ask_three_times(attempt, wrong: str) -> bool:
     return False
 
 
+def _image_name(path) -> str:
+    """How an image, or a set of member images, is named in a prompt."""
+    from . import archive
+    return str(path) if isinstance(path, archive.MemberSet) else Path(path).name
+
+
+def _is_image(path) -> bool:
+    from . import archive
+    return (isinstance(path, archive.MemberSet)
+            or archive.archive_format(path) in archive.IMAGE_FORMATS)
+
+
+def _source_images(sources) -> tuple[list, list]:
+    """The paths whose own passwords are asked for, and what the volumes inside are
+    unlocked in: for a set of member images, each member, then the set as a whole."""
+    from . import archive
+    own, inside = [], []
+    for s in sources:
+        if len(s.members) > 1:
+            own += s.members
+            inside.append(archive.MemberSet(s.members))
+        elif s.kind == "archive" and _is_image(s.path) and archive.holds_own_array(s.path):
+            # one image whose own partitions hold an array is read as a set of itself
+            own.append(s.path)
+            inside.append(archive.MemberSet([s.path]))
+        else:
+            own.append(s.path)
+            inside.append(s.path)
+    return own, inside
+
+
 def _unlock(paths, args: argparse.Namespace, bitlocker=None,
-            apfs=None) -> tuple[list[str], list[str]]:
+            apfs=None, luks=None) -> tuple[list[str], list[str]]:
     """Open each encrypted image among ``paths`` for this session with the first
     password or private key the command line gives that opens it or, when it gives
     none, one asked for at a terminal (three tries); then the BitLocker volumes in
@@ -76,9 +107,10 @@ def _unlock(paths, args: argparse.Namespace, bitlocker=None,
     recovery passwords and startup keys the command line gives or, at a terminal, one
     asked for per volume; then the encrypted APFS volumes (only in those of ``apfs``,
     when it is given), with the passwords the command line gives or one asked for per
-    volume. Returns the images still locked and the volumes still locked, each as a
+    volume; then the LUKS containers (only in those of ``luks``, when it is given), the
+    same way. Returns the images still locked and the volumes still locked, each as a
     sentence. What opens them is held in memory only (archive.unlock_image,
-    archive.unlock_bitlocker, archive.unlock_apfs)."""
+    archive.unlock_bitlocker, archive.unlock_apfs, archive.unlock_luks)."""
     from . import archive
 
     def opens(path, password=None, private_key=None) -> bool:
@@ -93,8 +125,10 @@ def _unlock(paths, args: argparse.Namespace, bitlocker=None,
     tty = sys.stdin is not None and sys.stdin.isatty()
     images, volumes = [], []
     for path in paths:
-        name = Path(path).name
-        if not archive.is_unlocked(path) and archive.needs_password(path):
+        name = _image_name(path)
+        if isinstance(path, archive.MemberSet):
+            pass                          # each member's own password is asked by its path
+        elif not archive.is_unlocked(path) and archive.needs_password(path):
             ok = (any(opens(path, pw) for pw in given)
                   or any(opens(path, private_key=k) for k in keys))
             if not ok and not (given or keys) and tty:
@@ -122,6 +156,8 @@ def _unlock(paths, args: argparse.Namespace, bitlocker=None,
             volumes += _unlock_bitlocker(path, given, starts, tty)
         if apfs is None or path in apfs:
             volumes += _unlock_apfs(path, given, tty)
+        if luks is None or path in luks:
+            volumes += _unlock_luks(path, given, tty)
     return images, volumes
 
 
@@ -132,8 +168,8 @@ def _unlock_bitlocker(path, given, starts, tty: bool) -> list[str]:
     password, recovery password or startup key could have opened."""
     from . import archive
 
-    name = Path(path).name
-    if archive.archive_format(path) not in archive.IMAGE_FORMATS:
+    name = _image_name(path)
+    if not _is_image(path):
         return []
     if not any(v["askable"] for v in archive.bitlocker_volumes(path)):
         return []
@@ -161,9 +197,13 @@ def _unlock_bitlocker(path, given, starts, tty: bool) -> list[str]:
             return archive.unlock_bitlocker(path, startup_key=_read_key_file(key, "startup key"))
         if not _ask_three_times(attempt, "That does not open it."):
             skipped.add(label)
+    # which option takes what opens it is said only when nothing was given (as
+    # qnxprobe 1.72 does); otherwise the reader's reason stands alone
+    hint = ("" if given or starts else
+            ". Give its password or recovery password with --password-file or "
+            "--password-env, or its startup key with --bitlocker-key")
     return [f"{v['label']} of {name} stays locked and its files are not read "
-            f"({v['note']}). Give its password or recovery password with --password-file "
-            f"or --password-env, or its startup key with --bitlocker-key"
+            f"({v['note']}){hint}"
             for v in archive.bitlocker_volumes(path) if v["askable"]]
 
 
@@ -174,8 +214,8 @@ def _unlock_apfs(path, given, tty: bool) -> list[str]:
     volume still locked that a password could have opened."""
     from . import archive
 
-    name = Path(path).name
-    if archive.archive_format(path) not in archive.IMAGE_FORMATS:
+    name = _image_name(path)
+    if not _is_image(path):
         return []
     if not any(v["askable"] for v in archive.apfs_volumes(path)):
         return []
@@ -200,22 +240,80 @@ def _unlock_apfs(path, given, tty: bool) -> list[str]:
             return archive.unlock_apfs(path, secret)
         if not _ask_three_times(attempt, "That does not open it."):
             skipped.add(label)
+    hint = ("" if given else
+            ". Give its password or personal recovery key with --password-file or "
+            "--password-env")
     return [f"{v['label']} of {name} stays locked and its files are not read "
-            f"({v['note']}). Give its password or personal recovery key with "
-            f"--password-file or --password-env"
+            f"({v['note']}){hint}"
             for v in archive.apfs_volumes(path) if v["askable"]]
 
 
+def _unlock_luks(path, given, tty: bool) -> list[str]:
+    """Open the LUKS containers in the image at ``path`` with ``given`` passphrases,
+    and at a terminal ask for each container they leave locked. Returns a sentence for
+    each container still locked that a passphrase could have opened."""
+    from . import archive
+
+    name = _image_name(path)
+    if not _is_image(path):
+        return []
+    found = archive.luks_volumes(path)
+    # A container the reader cannot try a passphrase on (no pycryptodome, a header
+    # or cipher it refuses) says why when one was given, since it was not tried there:
+    # since qnxprobe 1.72 that reason is known before any passphrase is tried.
+    untried = [f"the LUKS container in {v['label']} of {name} stays locked and its files "
+               f"are not read ({v['note']}), so the passphrase given was not tried on it"
+               for v in found if given and not v["open"] and not v["askable"]]
+    if not any(v["askable"] for v in found):
+        return untried
+    for secret in given:
+        archive.unlock_luks(path, secret)
+    skipped: set[str] = set()
+    while tty:
+        pending = [v for v in archive.luks_volumes(path)
+                   if v["askable"] and v["label"] not in skipped]
+        if not pending:
+            break
+        label = pending[0]["label"]
+
+        def attempt(lb=label) -> bool:
+            secret = getpass.getpass(f"Passphrase for the LUKS container in {lb} of {name} "
+                                     f"(leave empty to leave it locked): ")
+            if not secret:
+                skipped.add(lb)
+                return True
+            return archive.unlock_luks(path, secret)
+        if not _ask_three_times(attempt, "That does not open it."):
+            skipped.add(label)
+    hint = "" if given else ". Give its passphrase with --password-file or --password-env"
+    return untried + [
+        f"the LUKS container in {v['label']} of {name} stays locked and its files are "
+        f"not read ({v['note']}){hint}"
+        for v in archive.luks_volumes(path) if v["askable"]]
+
+
 def _unlock_case(case, args: argparse.Namespace) -> None:
-    """Open the case's encrypted image sources, and the BitLocker and encrypted APFS
-    volumes the ingest read through in them, for this session, and say which are left
+    """Open the case's encrypted image sources, and the BitLocker volumes, encrypted
+    APFS volumes and LUKS containers the ingest read through in them, for this session, and say which are left
     locked: files read from them fail until what opens them is given."""
     from . import archive
 
     recs = list(archive.source_records(case).values())
-    images, volumes = _unlock([r["path"] for r in recs], args,
-                              bitlocker={r["path"] for r in recs if r["bitlocker"]},
-                              apfs={r["path"] for r in recs if r["apfs"]})
+    singles = [r for r in recs if not r.get("members")]
+    images, volumes = _unlock([r["path"] for r in singles], args,
+                              bitlocker={r["path"] for r in singles if r["bitlocker"]},
+                              apfs={r["path"] for r in singles if r["apfs"]},
+                              luks={r["path"] for r in singles if r["luks"]})
+    for r in recs:
+        if r.get("members"):
+            ref = archive.image_ref(r)
+            more, _none = _unlock(list(ref), args, bitlocker=set(), apfs=set(), luks=set())
+            images += more
+            _imgs, inside = _unlock([ref], args,
+                                    bitlocker={ref} if r["bitlocker"] else set(),
+                                    apfs={ref} if r["apfs"] else set(),
+                                    luks={ref} if r["luks"] else set())
+            volumes += inside
     for line in images:
         print(f"warning: {line}; files read from it will fail", file=sys.stderr)
     for line in volumes:
@@ -231,9 +329,79 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ingest_sources(args: argparse.Namespace):
+    """The sources and job-file meta an ingest command names. Several paths are the
+    member images of one source (a RAID set), read together; paths that open the same
+    disk are read once and said so. One disk image that holds part of an md array or
+    LVM2 volume group, and not all of it, has the other members looked for beside it,
+    by what each file records about itself (archive.find_members), unless
+    ``--no-find-members``: the whole search is printed and what it found is read with
+    it, and the case records the search and its outcome. Nothing is asked."""
+    from . import archive
+
+    given = args.source if isinstance(args.source, list) else [args.source]
+    if len(given) > 1:
+        src = image_set_source(given)
+        for note in src.notes:
+            _p(f"Note: {note}.")
+        for copy in src.copies:
+            _p(f"Warning: {copy}.")
+        return [src], {}
+    sources, meta = parse_source_spec(given[0])
+    if (len(sources) != 1 or sources[0].kind != "archive" or len(sources[0].members) > 1
+            or archive.archive_format(sources[0].path) not in archive.IMAGE_FORMATS):
+        return sources, meta
+    # an encrypted image given is opened first, so the search can read it
+    images, _volumes = _unlock([sources[0].path], args, bitlocker=set(), apfs=set(),
+                               luks=set())
+    if images:
+        raise ValueError("; ".join(images))  # what the ingest says for one it cannot open
+    name = Path(sources[0].path).name
+    if args.no_find_members:
+        pre = archive.find_members(sources[0].path, search=False)
+        if pre["incomplete"]:
+            sources[0].discovery = archive.discovery_record("not-searched",
+                                                            missing=pre["missing"])
+            _p(f"{name} holds part of a RAID set; its other member images were not "
+               "looked for (--no-find-members):")
+            for line in pre["missing"]:
+                _p(f"  missing   {line}")
+        return sources, meta
+    found = archive.find_members(sources[0].path)
+    if found["error"]:
+        _p(f"The other member images of {name} were not looked for: {found['error']}")
+    if not found["searched"]:
+        return sources, meta
+    _p(f"Looking for the other member images of {name} "
+       "(--no-find-members to read it alone):")
+    for line in found["lines"]:
+        _p(f"  {line}")
+    if not found["added"]:
+        sources[0].discovery = archive.discovery_record(
+            "nothing-added", unused=found["unused"], missing=found["missing"])
+        _p(f"No other member image was found; reading {name} alone.")
+        return sources, meta
+    src = image_set_source(found["paths"], found=[a["path"] for a in found["added"]],
+                           name=sources[0].name,
+                           discovery=archive.discovery_record(
+                               "used", [a["path"] for a in found["added"]],
+                               found["unused"], found["missing"]))
+    carry_options(src, sources[0])
+    for note in src.notes:
+        _p(f"Note: {note}.")
+    for copy in src.copies:
+        _p(f"Warning: {copy}.")
+    _p(f"Reading {len(src.members) or 1} member images as one source, {src.name}.")
+    return [src], meta
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     case = open_case(args.case, create=True, examiner=args.examiner)
-    sources, meta = parse_source_spec(args.source)
+    try:
+        sources, meta = _ingest_sources(args)
+    except Exception:
+        case.close()
+        raise
     if meta.get("case"):
         case.db.set_meta("case_name", str(meta["case"]))
     if meta.get("examiner"):
@@ -242,7 +410,11 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         for s in sources:
             if s.kind == "archive":
                 s.stage = True
-    images, volumes = _unlock([s.path for s in sources], args)
+    own, inside = _source_images(sources)
+    images, _none = _unlock(own, args, bitlocker=set(), apfs=set(), luks=set())
+    volumes: list[str] = []
+    if not images:
+        _imgs, volumes = _unlock(inside, args)
     if images:
         case.close()
         raise ValueError("; ".join(images))
@@ -254,13 +426,45 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         how = ""
         if s.kind == "archive":
             how = "  [copied into the case]" if s.stage else "  [read from the archive on demand]"
-        _p(f"  - {s.name}: {s.path}{how}")
+        if len(s.members) > 1:
+            _p(f"  - {s.name}: {len(s.members)} member images{how}")
+            for m in s.members:
+                _p(f"      {m}" + ("  (found beside the image given)" if m in s.found else ""))
+        else:
+            _p(f"  - {s.name}: {s.path}{how}")
     n = ingest_sources(case, sources)
+    for s in sources:
+        for line in _raid_lines(case, s):
+            _p(line)
+        for line in _padded_lines(case, s):
+            _p(f"warning: {line}")
     _p(f"Registered {n} files.")
     if not args.no_process:
         _run_process(case, args)
     case.close()
     return 0
+
+
+def _raid_lines(case, src) -> list[str]:
+    """The vendored reader's report of what it assembled from a set's member images
+    (each array and its roles, a role missing and rebuilt from parity, a member left
+    out and why), as the case keeps it and as qnxprobe and DLEAPP print it. Empty for
+    a source that is not a set, which keeps no such report."""
+    if src.kind != "archive":
+        return []
+    from . import archive
+    rec = archive.source_record(case, src.name) or {}
+    return [str(line) for line in rec.get("raid") or []] if rec.get("members") else []
+
+
+def _padded_lines(case, src) -> list[str]:
+    """What the case records of the acquisition chunks the walk read with zeros where
+    their stored data ran out (see archive.padded_lines). Empty for any other source."""
+    if src.kind != "archive":
+        return []
+    from . import archive
+    rec = archive.source_record(case, src.name) or {}
+    return [str(line) for line in rec.get("padded_chunks") or []]
 
 
 def _run_process(case, args) -> None:
@@ -464,12 +668,28 @@ def cmd_source(args: argparse.Namespace) -> int:
             if not rows:
                 _p("No archive sources in this case.")
             for s in rows:
+                members = s.get("members") or []
                 _p(f"  {s['name']}: {s['files']:,} files, {s['format']}, {s['mode']}, "
-                   f"{s['status']}  {s['path']}")
+                   f"{s['status']}  " + (f"{len(members)} member image"
+                                         f"{'' if len(members) == 1 else 's'}" if members
+                                         else s["path"]))
+                for m in members:
+                    _p(f"      {m['status']}  {m['path']}"
+                       + ("  (found beside the image given)" if m.get("found") else ""))
+                for line in (s.get("set_notes") or []) + (s.get("discovery_lines") or []):
+                    _p(f"      {line}")
             return 0
         if args.action == "relink":
-            s = archive.relink_source(case, args.name, args.path)
-            _p(f"{s['name']} now reads from {s['path']} ({s['status']}).")
+            s = archive.relink_source(case, args.name,
+                                      args.path[0] if len(args.path) == 1 else args.path)
+            if s.get("members"):
+                n = len(s["members"])
+                _p(f"{s['name']} now reads its {n} member image{'' if n == 1 else 's'} "
+                   f"from ({s['status']}):")
+                for m in s["members"]:
+                    _p(f"  {m['path']}")
+            else:
+                _p(f"{s['name']} now reads from {s['path']} ({s['status']}).")
             return 0
         if args.action == "stage":
             def progress(done: int, total: int) -> None:
@@ -714,13 +934,15 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--password-file", metavar="FILE", action="append", default=[],
                     help="for an encrypted image source (an Apple disk image, an "
                          "encrypted AFF or an FTK Imager AD-encrypted set), or a BitLocker "
-                         "or encrypted APFS volume in one: a password (for BitLocker, a "
-                         "password or recovery password; for APFS, a password or personal "
-                         "recovery key), the first line of FILE. Repeatable; each opens "
+                         "volume, encrypted APFS volume or LUKS container in one: a password "
+                         "(for BitLocker, a password or recovery password; for APFS, a "
+                         "password or personal recovery key; for LUKS, a passphrase), the "
+                         "first line of FILE. Repeatable; each opens "
                          "with the first that opens it. Held in memory for this run only")
     ap.add_argument("--password-env", metavar="NAME", action="append", default=[],
-                    help="for an encrypted image source, or a BitLocker or encrypted APFS "
-                         "volume in one: a password, from the environment variable NAME. "
+                    help="for an encrypted image source, or a BitLocker volume, encrypted "
+                         "APFS volume or LUKS container in one: a password, from the "
+                         "environment variable NAME. "
                          "Repeatable. Without either, GLEAPP asks at a terminal")
     ap.add_argument("--private-key", metavar="FILE", action="append", default=[],
                     help="for an image source sealed to a certificate (an encrypted AFF, "
@@ -747,13 +969,18 @@ def build_parser() -> argparse.ArgumentParser:
                                       "(zip or tar), a disk image (E01, s01, Ex01, AFF, AFF4, "
                                       "DMG, VHD, VHDX, VMDK, QCOW, raw, or a split raw "
                                       "set), or a JSON spec, then process")
-    s.add_argument("source", help="folder path, extraction .zip or .tar "
+    s.add_argument("source", nargs="+",
+                   help="folder path, extraction .zip or .tar "
                                  "(plain, .gz, .bz2 or .xz), a disk image (.E01, .s01, "
                                  ".Ex01, .aff, .afm, .aff4, .dmg with any .dmgpart files, "
                                  ".sparseimage, a .sparsebundle folder, a .vhd, .vhdx, "
                                  ".vmdk or .qcow2, a raw "
                                  ".img/.dd, or any segment of a numbered split set), "
-                                 "OR .json spec file")
+                                 "OR .json spec file. Several disk images are the "
+                                 "member images of one RAID set, read as one source")
+    s.add_argument("--no-find-members", action="store_true",
+                   help="read one disk image alone, without looking beside it for the "
+                        "other member images of a RAID set it belongs to")
     s.add_argument("--no-process", action="store_true", help="register files only")
     s.add_argument("--stage", action="store_true",
                    help="copy the media out of an extraction archive into the case, so the "
@@ -769,7 +996,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("action",
                    choices=["list", "relink", "stage", "unstage", "carve"])
     s.add_argument("name", nargs="?", help="source name, as shown by 'source list'")
-    s.add_argument("path", nargs="?", help="relink: where the archive is now")
+    s.add_argument("path", nargs="*", help="relink: where the archive is now; for a "
+                                           "source read from several member images, "
+                                           "where each is now, or one of them when the "
+                                           "others sit beside it under the same names")
     s.add_argument("--unallocated-only", action="store_true",
                    help="carve: scan only the space no volume claims, which is the "
                         "only part a walk cannot reach. Falls back to the whole "

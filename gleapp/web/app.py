@@ -29,7 +29,7 @@ from werkzeug.exceptions import HTTPException
 
 from .. import (appconfig, archive, backup, basemaps, categories, docmedia, exocache, flags,
                lava, provenance, relink, report, savedset)
-from ..case import open_case, parse_source_spec
+from ..case import image_set_source, open_case, parse_source_spec
 from ..db import FILE_PATH_SQL, ORIGINS, TOOL_ACTOR
 from ..facematch import find_matching_faces
 from ..ingest import DOCUMENT_EXTS, is_exoplayer_cache_name
@@ -205,6 +205,18 @@ def _key_file(path, what: str) -> bytes:
         abort(400, description=f"the {what} file could not be read: {exc.strerror or exc}")
 
 
+def _discovery(body: dict) -> dict | None:
+    """The member search the client ran for one source and the examiner's answer, as
+    the case records it (archive.discovery_record), or None when there was none."""
+    d = body.get("discovery") if isinstance(body, dict) else None
+    if not isinstance(d, dict) or not d.get("choice"):
+        return None
+    return archive.discovery_record(
+        str(d["choice"]), [str(p) for p in d.get("added") or [] if p],
+        [u for u in d.get("unused") or [] if isinstance(u, dict)],
+        [str(m) for m in d.get("missing") or []])
+
+
 def _try_bitlocker(path: str, given: dict) -> bool:
     """Try one BitLocker ``secret`` (a password or recovery password) or ``key_file``
     (a startup key's path on this machine) on the image at ``path``."""
@@ -217,21 +229,88 @@ def _try_bitlocker(path: str, given: dict) -> bool:
 
 def _unlock_sources(sources, data: dict) -> list[dict]:
     """Open each encrypted image source with what the ingest request's body gives for
-    it, and the BitLocker and encrypted APFS volumes in each image, and return what is
-    still locked, one entry per source, for the client to ask about: ``needs`` is
-    ``password``, ``private key``, ``bitlocker`` or ``apfs`` (a volume, with its
-    ``volume`` label and the reader's ``note``; for APFS the ``hint`` it stores too),
-    and ``wrong`` is true when something was given and did not open it. An image the
-    body lists in ``bitlocker_skip`` or ``apfs_skip`` has those volumes left locked and
-    is not asked about again; the walk records them as not read."""
+    it, and the BitLocker volumes, encrypted APFS volumes and LUKS containers in each
+    image, and return what is still locked, one entry per source, for the client to ask
+    about: ``needs`` is ``password``, ``private key``, ``bitlocker``, ``apfs`` or
+    ``luks`` (a volume, with its ``volume`` label and the reader's ``note``; for APFS
+    the ``hint`` it stores too), and ``wrong`` is true when something was given and did
+    not open it. An image the body lists in ``bitlocker_skip``, ``apfs_skip`` or
+    ``luks_skip`` has those volumes left locked and is not asked about again; the walk
+    records them as not read."""
     passwords = data.get("passwords") or {}
     private_keys = data.get("private_keys") or {}
     bitlocker = data.get("bitlocker") or {}
     skip = set(data.get("bitlocker_skip") or [])
     apfs = data.get("apfs") or {}
     apfs_skip = set(data.get("apfs_skip") or [])
+    luks = data.get("luks") or {}
+    luks_skip = set(data.get("luks_skip") or [])
+    def volume_lock(name, ref, token):
+        """What still locks a volume inside ``ref`` (an image, or a set of member
+        images and the arrays read from them), as one entry, or None. ``token`` is
+        what the client sends what it is given back under."""
+        if token not in skip and any(v["askable"] for v in archive.bitlocker_volumes(ref)):
+            tried = bitlocker.get(token)
+            wrong = bool(tried) and not _try_bitlocker(ref, tried)
+            left = [v for v in archive.bitlocker_volumes(ref) if v["askable"]]
+            if left:
+                return {"name": name, "path": token, "needs": "bitlocker",
+                        "volume": left[0]["label"], "note": left[0]["note"], "wrong": wrong}
+        if token not in apfs_skip and any(v["askable"] for v in archive.apfs_volumes(ref)):
+            tried = (apfs.get(token) or {}).get("secret")
+            wrong = bool(tried) and not archive.unlock_apfs(ref, str(tried))
+            left = [v for v in archive.apfs_volumes(ref) if v["askable"]]
+            if left:
+                return {"name": name, "path": token, "needs": "apfs",
+                        "volume": left[0]["label"], "note": left[0]["note"],
+                        "hint": left[0]["hint"], "wrong": wrong}
+        if token not in luks_skip and any(v["askable"] for v in archive.luks_volumes(ref)):
+            tried = (luks.get(token) or {}).get("secret")
+            wrong = bool(tried) and not archive.unlock_luks(ref, str(tried))
+            left = [v for v in archive.luks_volumes(ref) if v["askable"]]
+            if left:
+                return {"name": name, "path": token, "needs": "luks",
+                        "volume": left[0]["label"], "note": left[0]["note"], "wrong": wrong}
+        return None
+
     locked = []
     for s in sources:
+        if len(s.members) > 1:
+            # the member images of one source: each opens with its own password or
+            # key, asked for by its own path; then the volumes inside each member and
+            # each array read from them, under the set's own token
+            for path in s.members:
+                try:
+                    if archive.is_unlocked(path):
+                        continue
+                    needs = ("password" if archive.needs_password(path) else
+                             "private key" if archive.needs_private_key(path) else "")
+                    if not needs:
+                        continue
+                    given = (passwords if needs == "password" else private_keys).get(path)
+                    if given is None:
+                        ok = False
+                    elif needs == "password":
+                        ok = archive.unlock_image(path, given)
+                    else:
+                        ok = archive.unlock_image(path, private_key=_key_file(given,
+                                                                              "private key"))
+                    if not ok:
+                        locked.append({"name": Path(path).name, "path": path,
+                                       "needs": needs, "wrong": given is not None})
+                except (OSError, archive.ewfprobe.EwfError) as exc:
+                    abort(400, description=f"{Path(path).name} could not be opened: {exc}")
+            if any(e["path"] in s.members for e in locked):
+                continue
+            # what opens a volume inside a member or an array read from them; the
+            # client sends it back under the set's own token
+            try:
+                entry = volume_lock(s.name, archive.MemberSet(s.members), "|".join(s.members))
+            except (OSError, archive.ewfprobe.EwfError) as exc:
+                abort(400, description=f"{s.name} could not be opened: {exc}")
+            if entry:
+                locked.append(entry)
+            continue
         try:
             if not archive.is_unlocked(s.path):
                 needs = ("password" if archive.needs_password(s.path) else
@@ -251,25 +330,13 @@ def _unlock_sources(sources, data: dict) -> list[dict]:
                         continue
             if archive.archive_format(s.path) not in archive.IMAGE_FORMATS:
                 continue
-            if s.path not in skip and any(v["askable"]
-                                          for v in archive.bitlocker_volumes(s.path)):
-                tried = bitlocker.get(s.path)
-                wrong = bool(tried) and not _try_bitlocker(s.path, tried)
-                left = [v for v in archive.bitlocker_volumes(s.path) if v["askable"]]
-                if left:
-                    locked.append({"name": s.name, "path": s.path, "needs": "bitlocker",
-                                   "volume": left[0]["label"], "note": left[0]["note"],
-                                   "wrong": wrong})
-                    continue
-            if s.path not in apfs_skip and any(v["askable"]
-                                               for v in archive.apfs_volumes(s.path)):
-                tried = (apfs.get(s.path) or {}).get("secret")
-                wrong = bool(tried) and not archive.unlock_apfs(s.path, str(tried))
-                left = [v for v in archive.apfs_volumes(s.path) if v["askable"]]
-                if left:
-                    locked.append({"name": s.name, "path": s.path, "needs": "apfs",
-                                   "volume": left[0]["label"], "note": left[0]["note"],
-                                   "hint": left[0]["hint"], "wrong": wrong})
+            # one image whose own partitions hold an array is read as a set of
+            # itself, so the volumes inside that array are asked about too
+            ref = (archive.MemberSet([s.path]) if archive.holds_own_array(s.path)
+                   else s.path)
+            entry = volume_lock(s.name, ref, s.path)
+            if entry:
+                locked.append(entry)
         except (OSError, archive.ewfprobe.EwfError) as exc:
             abort(400, description=f"{s.name} could not be opened: {exc}")
     return locked
@@ -445,10 +512,22 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
         """
         if not state["native"]:
             return jsonify({"path": None, "error": "not running in desktop mode"})
-        kind = (request.get_json(silent=True) or {}).get("kind", "folder")
+        body = request.get_json(silent=True) or {}
+        kind = body.get("kind", "folder")
+        # several files at once (the member images of one RAID set), for the
+        # evidence pickers only; the others keep the call they always made
+        many = ({"allow_multiple": True}
+                if body.get("multiple") and kind in ("ingestfile", "archive") else {})
         try:
             import webview
             win = webview.windows[0]
+            open_dialog = win.create_file_dialog
+            if many and sys.platform == "win32":
+                # pywebview's dialog hangs with several files allowed when shown from
+                # this request thread; see gleapp/_win_open_dialog.py
+                from .._win_open_dialog import open_files
+                open_dialog = lambda _type, allow_multiple=True, file_types=(): open_files(  # noqa: E731
+                    file_types, multiple=allow_multiple)
             if kind == "folder":
                 res = win.create_file_dialog(webview.FOLDER_DIALOG)
             elif kind == "hashlist":
@@ -459,8 +538,8 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                         "All files (*.*)"),
                 )
             elif kind == "archive":
-                res = win.create_file_dialog(
-                    webview.OPEN_DIALOG,
+                res = open_dialog(
+                    webview.OPEN_DIALOG, **many,
                     file_types=("Extraction or disk image "
                                 "(*.zip;*.tar;*.tgz;*.tar.gz;*.tbz2;*.tar.bz2;"
                                 "*.txz;*.tar.xz;*.E01;*.e01;*.s01;*.S01;*.Ex01;*.ex01;*.aff;*.AFF;*.afm;*.aff4;*.dmg;*.DMG;*.sparseimage;*.sparsebundle;"
@@ -504,13 +583,13 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                     file_types=("GLEAPP case file (*.gleapp)", "All files (*.*)"),
                 )
             elif kind == "ingestfile":
-                res = win.create_file_dialog(
-                    webview.OPEN_DIALOG,
+                res = open_dialog(
+                    webview.OPEN_DIALOG, **many,
                     file_types=(
                         "Evidence file (*.zip;*.tar;*.tgz;*.tar.gz;*.tbz2;*.tar.bz2;"
                         "*.txz;*.tar.xz;*.E01;*.e01;*.s01;*.S01;*.Ex01;*.ex01;*.aff;*.AFF;*.afm;*.aff4;*.dmg;*.DMG;*.sparseimage;*.sparsebundle;"
                         "*.vhd;*.vhdx;*.vmdk;*.qcow;*.qcow2;*.img;*.dd;*.raw;*.bin;*.000;"
-                        "*.001;*.json)",
+                        "*.001;*.json;*.xml)",
                         "All files (*.*)"),
                 )
             else:
@@ -518,6 +597,9 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                     webview.OPEN_DIALOG,
                     file_types=("JSON (*.json)", "All files (*.*)"),
                 )
+            if many:
+                return jsonify({"path": res[0] if res else None,
+                                "paths": list(res) if res else []})
             return jsonify({"path": res[0] if res else None})
         except Exception as exc:  # noqa: BLE001
             return jsonify({"path": None, "error": f"{type(exc).__name__}: {exc}"})
@@ -648,9 +730,22 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                     state["case"].db.set_meta("case_name", str(meta["case"]))
             for s in data.get("sources", []):
                 raw = s["path"] if isinstance(s, dict) else s
+                listed = s.get("paths") if isinstance(s, dict) else None
+                if isinstance(listed, list) and len(listed) > 1:
+                    # the member images of one RAID set, read as one source: given
+                    # together, or the image picked and those found beside it
+                    for p in listed:
+                        if not Path(p).exists():
+                            abort(400, description=f"path does not exist: {p}")
+                    sources.append(image_set_source(listed, found=s.get("found") or (),
+                                                    name=s.get("name") or None,
+                                                    discovery=_discovery(s)))
+                    continue
                 if not Path(raw).exists():
                     abort(400, description=f"path does not exist: {raw}")
                 src, _ = parse_source_spec(raw)
+                if isinstance(s, dict) and len(src) == 1 and s.get("discovery"):
+                    src[0].discovery = _discovery(s)
                 if isinstance(s, dict) and s.get("name"):
                     src[0].name = s["name"]
                 sources += src
@@ -2252,14 +2347,46 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
     def sources_status():
         return jsonify(archive.source_status(C()))
 
+    @app.post("/api/source/members")
+    def source_members():
+        """The other member images of a RAID set beside the disk image at ``path``,
+        found by what each file records about itself (archive.find_members), for the
+        examiner to use or not before the ingest. Nothing is looked for when the path
+        is not a disk image or holds no RAID member."""
+        body = request.get_json(force=True) or {}
+        listed = body.get("paths") if isinstance(body.get("paths"), list) else []
+        if len(listed) > 1:
+            # several picked together: one source, each disk read once; logical
+            # evidence or a file that is not a disk image is refused here, before
+            # anything is ingested
+            try:
+                src = image_set_source([str(p) for p in listed])
+            except ValueError as exc:
+                abort(400, description=str(exc))
+            return jsonify({"paths": src.members or [src.path], "same": src.notes,
+                            "copies": src.copies})
+        raw = str(body.get("path", "")).strip().strip('"')
+        if not raw or not Path(raw).exists():
+            abort(400, description=f"path does not exist: {raw}")
+        if Path(raw).is_dir() and archive.archive_format(raw) is None:
+            return jsonify({"start": raw, "searched": False, "added": [], "unused": [],
+                            "missing": [], "warnings": [], "lines": [], "error": None,
+                            "paths": [raw]})
+        return jsonify(archive.find_members(raw))
+
     @app.post("/api/source/relink")
     def source_relink():
         """Point an archive source at the zip's new location. Accepted only when
-        the file holds every registered member with the same size and CRC."""
+        the file holds every registered member with the same size and CRC. A source
+        read from several member images takes ``paths``, where each is now, or one
+        ``path`` beside which the others sit under the names the case recorded."""
         case = C()
         body = request.get_json(force=True) or {}
         name = str(body.get("name", ""))
+        listed = body.get("paths") if isinstance(body.get("paths"), list) else []
         raw = str(body.get("path", "")).strip().strip('"')
+        if listed:
+            raw = [str(p).strip().strip('"') for p in listed if str(p).strip()]
         if not name or not raw:
             abort(400, description="name and path are required")
         try:
@@ -2273,8 +2400,8 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
         """Open an encrypted disk image source with its password (``password``) or the
         private key of a certificate it is sealed to (``private_key``, the key file's
         path on this machine), the BitLocker volumes in it (``bitlocker``, a ``secret``
-        or a ``key_file``), or the encrypted APFS volumes in it (``apfs``, a ``secret``),
-        held in memory for this session only. ``ok`` is false, with ``wrong`` true, when
+        or a ``key_file``), the encrypted APFS volumes in it (``apfs``, a ``secret``), or
+        the LUKS containers in it (``luks``, a ``secret``), held in memory for this session only. ``ok`` is false, with ``wrong`` true, when
         it opens nothing."""
         case = C()
         body = request.get_json(force=True) or {}
@@ -2284,13 +2411,26 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
         path = rec["path"]
         bitlocker = body.get("bitlocker") if isinstance(body.get("bitlocker"), dict) else None
         apfs = body.get("apfs") if isinstance(body.get("apfs"), dict) else None
+        luks = body.get("luks") if isinstance(body.get("luks"), dict) else None
+        if rec.get("members") and bitlocker is None and apfs is None \
+                and luks is None:
+            # a set of member images: the first member still locked, each in turn
+            path = next((m["path"] for m in rec["members"]
+                         if not archive.is_unlocked(m["path"])
+                         and (archive.needs_password(m["path"])
+                              or archive.needs_private_key(m["path"]))), path)
+        elif rec.get("members"):
+            # a volume inside a member or an array read from them
+            path = archive.image_ref(rec)
         if bitlocker is not None and not rec["bitlocker"]:
             abort(400, description=f"{rec['name']} holds no BitLocker volume")
         if apfs is not None and not rec["apfs"]:
             abort(400, description=f"{rec['name']} holds no encrypted APFS volume "
                                    f"the ingest read")
-        if bitlocker is None and apfs is None and not (archive.needs_password(path)
-                                                       or archive.needs_private_key(path)):
+        if luks is not None and not rec["luks"]:
+            abort(400, description=f"{rec['name']} holds no LUKS container the ingest read")
+        if (bitlocker is None and apfs is None and luks is None
+                and not (archive.needs_password(path) or archive.needs_private_key(path))):
             abort(400, description=f"{rec['name']} is not an encrypted disk image")
         ok = False
         try:
@@ -2298,6 +2438,8 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                 ok = _try_bitlocker(path, bitlocker)
             elif apfs is not None:
                 ok = archive.unlock_apfs(path, str(apfs.get("secret") or ""))
+            elif luks is not None:
+                ok = archive.unlock_luks(path, str(luks.get("secret") or ""))
             elif body.get("private_key"):
                 ok = archive.unlock_image(path, private_key=_key_file(body["private_key"],
                                                                       "private key"))
