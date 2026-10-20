@@ -167,6 +167,55 @@ def test_a_changed_byte_is_invalid_and_the_declaration_is_kept_but_marked():
     assert rec["state"] not in pv.VALID_STATES
 
 
+def _unstamped(dst="trainedAlgorithmicMedia", label=ACTIVE, **kw):
+    """A manifest whose signature carries no time-stamp."""
+    m = cf.manifest(label, dst, **kw)
+    del m["signature_info"]["time"]
+    return m
+
+
+def test_an_expired_certificate_without_a_time_stamp_is_said_in_words():
+    """A Canva-signed PNG read Invalid with signingCredential.expired and nothing else
+    blocking: its signature verified and its content matched, but with no time-stamp
+    the certificate is checked against the time of reading. A list of codes reads the
+    same as a tampered file, so the state says why."""
+    results = cf.results(failure=["signingCredential.untrusted", "signingCredential.expired"])
+    rec = pv.parse_manifest_store(cf.manifest_store(_unstamped(), "Invalid", results))
+    assert (rec["state"], rec["state_reason"]) == ("invalid", pv.EXPIRED_UNSTAMPED)
+    assert rec["signature_validated"] is True
+    assert pv.hard_binding_mismatch(rec) is False
+    assert dict(pv.describe(rec))["State"] == f"Invalid: {pv.EXPIRED_UNSTAMPED}"
+
+
+@pytest.mark.parametrize("failure, stamp", [
+    (["signingCredential.expired", "assertion.dataHash.mismatch"], None),
+    (["signingCredential.expired", "claimSignature.mismatch"], None),
+    (["signingCredential.expired"], "time"),
+    (["signingCredential.expired"], "timeStamp.untrusted"),
+], ids=["and changed content", "and a signature that does not verify",
+        "with a signed time", "with a time-stamp code"])
+def test_an_expired_certificate_is_not_explained_when_more_is_wrong(failure, stamp):
+    """The words are for the expiry alone. Beside another failure they would draw the
+    eye from it; with a time-stamp, the certificate had expired when it was stamped,
+    which the words do not say."""
+    m = cf.manifest(ACTIVE, "trainedAlgorithmicMedia") if stamp == "time" else _unstamped()
+    results = cf.results(failure=failure)
+    if stamp and stamp != "time":
+        results["activeManifest"]["informational"].append(cf.code(stamp))
+    rec = pv.parse_manifest_store(cf.manifest_store(m, "Invalid", results))
+    assert rec["state"] == "invalid"
+    assert rec.get("state_reason") != pv.EXPIRED_UNSTAMPED
+
+
+def test_an_ingredient_whose_certificate_expired_is_said_in_words():
+    child = _unstamped("digitalCapture", label=CHILD)
+    active = cf.manifest(ACTIVE, "compositeWithTrainedAlgorithmicMedia",
+                         ingredients=[cf.ingredient(CHILD, failure=["signingCredential.expired"])])
+    rec = pv.parse_manifest_store(cf.manifest_store(active, "Valid", others=[child]))
+    ing = rec["ingredients"][0]
+    assert (ing["state"], ing["state_reason"]) == ("invalid", pv.EXPIRED_UNSTAMPED)
+
+
 @pytest.mark.parametrize("code", sorted(pv.HARD_BINDING_MISMATCH))
 def test_every_hard_binding_mismatch_is_flagged(code):
     rec = _captured("Invalid", cf.results(failure=[code]))
