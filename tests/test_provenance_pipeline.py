@@ -160,6 +160,27 @@ def test_a_snapchat_bundle_is_read_from_the_bytes_the_pass_reads(tmp_path, monke
         case.close()
 
 
+def test_the_run_says_each_reason_a_file_was_not_checked(tmp_path, monkeypatch):
+    """Without the library, a file holding a store is not checked for want of it, and a
+    BMP because the reader does not read BMP. The run's summary put both down to the
+    library."""
+    _no_library(monkeypatch)
+    ev = tmp_path / "evidence"
+    ev.mkdir()
+    (ev / "stub.jpg").write_bytes(cf.jpeg(cf.app11_store()))
+    (ev / "pic.bmp").write_bytes(next(d for c, _n, d in cf.unsupported_samples() if c == "BMP"))
+    case = open_case(tmp_path / "case", create=True, examiner="t")
+    try:
+        ingest_sources(case, [Source(name="ev", path=str(ev))])
+        stats = process(case, workers=1, screen=False, similar=False)
+        assert stats.stages["provenance"] == (
+            f"ok: 1 not checked: {pv.NOT_CHECKED_LIBRARY}; 1 not checked: {pv.UNSUPPORTED}")
+        info = json.loads(_rows(case)["pic.bmp"]["c2pa_info"])
+        assert (info["state_reason"], info["container"]) == (pv.UNSUPPORTED, "BMP")
+    finally:
+        case.close()
+
+
 def test_processing_assigns_no_category(tmp_path, monkeypatch):
     _no_library(monkeypatch)
     case = open_case(tmp_path / "case", create=True, examiner="t")

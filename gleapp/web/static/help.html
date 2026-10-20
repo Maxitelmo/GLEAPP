@@ -1930,8 +1930,11 @@ read. Validation needs <strong>c2pa-python</strong>, an optional extra
 (<code>pip install -e ".[provenance]"</code>) that the release builds do not carry; in
 them a file holding credentials is <em>Not checked: the c2pa library is not
 installed</em>, while
-absence is still recorded from GLEAPP's own reading. The native library runs in a child
-process, a batch at a time, so a fault in it costs one file and never the run.</p>
+absence is still recorded from GLEAPP's own reading. A format the c2pa reader does not
+read at all (BMP, Matroska and WebM, WMV, FLV, MPEG, MPEG transport stream, JPEG 2000,
+KTX) is recognised from its bytes and is <em>Not checked: the c2pa reader does not
+support this format</em>, with the library or without it. The native library runs in a
+child process, a batch at a time, so a fault in it costs one file and never the run.</p>
 
 <h3>Reading them, and where they show</h3>
 <ul>

@@ -689,6 +689,48 @@ def test_a_segment_cut_short_leaves_the_decision_to_the_reader(tmp_path, fake_c2
     assert len(lib.calls) == 1
 
 
+UNSUPPORTED_SAMPLES = cf.unsupported_samples()
+
+
+@pytest.mark.parametrize("container, name, data", UNSUPPORTED_SAMPLES,
+                         ids=[s[1] for s in UNSUPPORTED_SAMPLES])
+@pytest.mark.parametrize("library", [(True, None), (False, pv.NOT_CHECKED_LIBRARY)],
+                         ids=["library", "no library"])
+def test_a_container_the_reader_does_not_read_is_settled_from_its_bytes(
+        tmp_path, container, name, data, library):
+    """c2pa-rs 0.91.0 reads none of these. Each was handed to a reader process that
+    answered NotSupported or, without the library, recorded "the c2pa library is not
+    installed", which the library would not have changed. Its bytes say which it is,
+    whatever its name, so it is not checked for that reason at once, either way."""
+    del name
+    p = tmp_path / "f.jpg"              # the name says nothing; the bytes decide
+    p.write_bytes(data)
+    record, request = pv.prescan(p, library=library)
+    assert request is None
+    assert (record["state"], record["state_reason"]) == ("not_checked", pv.UNSUPPORTED)
+    assert record["container"] == container
+
+
+def test_every_container_the_reader_does_not_read_has_a_sample():
+    assert {s[0] for s in UNSUPPORTED_SAMPLES} == set(pv.UNSUPPORTED_CONTAINERS)
+
+
+def test_what_the_reader_can_read_is_still_left_to_it(tmp_path):
+    """A GIF or an AVI can hold a store and GLEAPP does not walk either, so the reader
+    decides. A GIF starts with the transport stream's sync byte, "G", and one with that
+    byte at every packet's place is still a GIF. Bytes not recognised go to the reader."""
+    gif = bytearray(b"GIF89a" + bytes(6 * 188))
+    for k in range(6):
+        gif[k * 188] = 0x47
+    avi = b"RIFF" + (100).to_bytes(4, "little") + b"AVI " + bytes(100)
+    for name, data in (("a.gif", bytes(gif)), ("a.avi", avi), ("a.bin", bytes(64))):
+        p = tmp_path / name
+        p.write_bytes(data)
+        record, request = pv.prescan(p, library=(True, None))
+        assert request is not None, name
+        assert "container" not in record, name
+
+
 # -- the reader, with a stand-in library ----------------------------------------------
 
 @pytest.fixture(name="fake_c2pa")

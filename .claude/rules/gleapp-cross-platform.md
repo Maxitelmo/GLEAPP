@@ -1322,7 +1322,14 @@ files was started 11 times and timed out 6. `NotSupported`, `Io` and
 a remote manifest, which c2pa-python 0.38.0 raises as a plain `C2paError("Remote: ...")`
 (its `RemoteManifest` subclass is for another prefix); every other `C2paError` is
 malformed. With an empty format c2pa sniffs the bytes itself: a GIF reads as no manifest,
-a BMP or ICO as unsupported (c2pa-rs 0.91.0).
+a BMP or ICO as unsupported (c2pa-rs 0.91.0). Asking it for one of the containers it does
+not read cost a reader process per 25 files to hear NotSupported, and without the library
+those files were recorded "the c2pa library is not installed", which it would not have
+changed. `provenance.UNSUPPORTED_CONTAINERS` names them (BMP, Matroska and WebM, ASF,
+FLV, MPEG program and transport streams, JPEG 2000, KTX); they are told apart from their
+leading bytes and recorded unsupported without the reader. `tests/test_provenance_signed.py`
+holds the list to `Reader.get_supported_mime_types()` and to the reader's own answer for
+a sample of each, so a c2pa that starts reading one fails there.
 
 **The bytes settle absence only when the walk reaches the container's end.** A JPEG up to
 its image data, a PNG to IEND, a WebP to the size its RIFF header gives, every entry of a

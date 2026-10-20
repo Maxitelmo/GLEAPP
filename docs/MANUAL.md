@@ -2166,7 +2166,12 @@ again alone; only a file that takes the ten minutes by itself is recorded as
 ### Reading them
 
 - **Processing** reads every new picture and video: files with no store are settled
-  from the bytes, and those holding one go to the reader.
+  from the bytes, and those holding one go to the reader. A format the c2pa reader
+  does not read at all (BMP, Matroska and WebM, WMV, FLV, MPEG, MPEG transport stream,
+  JPEG 2000, KTX) is recognised from its bytes and is **Not checked: the c2pa reader
+  does not support this format**, with the library or without it. Any other format
+  GLEAPP does not walk, such as GIF or AVI, goes to the reader when the library is
+  installed.
 - **Older cases** are not read on their own. Open the sidebar's **Content
   Credentials** section and click **Read Content Credentials**, or run
   `gleapp -c CASE provenance` (`--force` reads everything again). With the c2pa

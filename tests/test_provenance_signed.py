@@ -22,7 +22,7 @@ from gleapp import provenance as pv
 
 pytest.importorskip("c2pa")
 # pylint: disable=wrong-import-position,wrong-import-order
-from c2pafake import read_in_process  # noqa: E402  pylint: disable=import-error
+from c2pafake import read_in_process, unsupported_samples  # noqa: E402  pylint: disable=import-error
 from c2pasign import DST, created, make_chain, sign  # noqa: E402  pylint: disable=import-error
 
 
@@ -275,15 +275,37 @@ def test_a_signed_clip(tmp_path, chain):
 
 
 def test_a_container_the_scan_does_not_walk_is_left_to_the_reader(tmp_path):
-    """GLEAPP's scan walks JPEG, PNG, WebP, TIFF and ISOBMFF. Anything else goes to
-    the reader, which names the format from the bytes: a GIF it reads and finds
-    nothing in, a BMP it does not support, which says nothing about a manifest."""
+    """GLEAPP's scan walks JPEG, PNG, WebP, TIFF and ISOBMFF. A GIF goes to the reader,
+    which reads it and finds nothing in it. A BMP the reader does not support, which
+    says nothing about a manifest; GLEAPP records that from the bytes without asking
+    it (UNSUPPORTED_CONTAINERS)."""
     gif = _read(_write(tmp_path, "a.gif", _picture("GIF")))
     assert gif["state"] == "absent"
     assert gif["state_reason"] == pv.ABSENT_BY_READER
     bmp = _read(_write(tmp_path, "a.bmp", _picture("BMP")))
     assert bmp["state"] == "not_checked"
     assert bmp["state_reason"] == pv.UNSUPPORTED
+
+
+def test_the_containers_settled_unsupported_are_ones_the_library_does_not_read(tmp_path):
+    """GLEAPP records each container of UNSUPPORTED_CONTAINERS as one the reader does
+    not support without asking it, so each is held to the library: none of its MIME
+    types or extensions is among the formats the library's Reader lists, and the
+    reader, handed each sample as GLEAPP hands it a file it does not walk (no format,
+    in the worker process), answers NotSupported. A version that reads one fails here.
+    The GIF and AVI the scan leaves to the reader are ones it lists."""
+    import c2pa  # pylint: disable=import-outside-toplevel,import-error
+    supported = {str(s).lower() for s in c2pa.Reader.get_supported_mime_types()}
+    for container, names in pv.UNSUPPORTED_CONTAINERS.items():
+        assert not supported & {n.lower() for n in names}, container
+    assert {"image/gif", "video/avi"} <= supported
+    samples = unsupported_samples()
+    requests = [{"path": str(_write(tmp_path, name, data)), "mime": ""}
+                for _container, name, data in samples]
+    out = pv._run_reader(  # pylint: disable=protected-access
+        requests, pv.reader_settings(pv.trust_lists()), timeout=300)
+    assert {os.path.basename(p): o["kind"] for p, o in out.items()} == \
+        {name: "unsupported" for _container, name, _data in samples}
 
 
 def test_reading_never_writes_to_the_file(tmp_path, chain):

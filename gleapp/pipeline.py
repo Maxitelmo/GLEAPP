@@ -838,14 +838,16 @@ def process(
     # whether the c2pa library can be used, checked once for the run, not per file
     library = provenance.library_available()
     for_reader: dict[int, tuple[dict, dict]] = {}     # row id -> what its walk gave
-    not_checked = [0]
+    not_checked: dict[str, int] = {}                   # why -> how many files
 
     def _write(res: dict) -> None:
         walked = res["fields"].pop(_PRESCAN, None)
         if walked is not None:
             for_reader[res["id"]] = walked
         elif res["fields"].get("c2pa_state") == "not_checked":
-            not_checked[0] += 1
+            why = (provenance.load(res["fields"].get("c2pa_info")) or {}).get("state_reason")
+            why = str(why or "").split(":")[0]     # a file's own details left out
+            not_checked[why] = not_checked.get(why, 0) + 1
         if res["status"] == "ok":
             stats.processed += 1
         elif res["status"] == "skip":
@@ -912,10 +914,12 @@ def process(
                                                  library=library, prescanned=for_reader))
         if read is not None:
             stats.stages["provenance"] = f"ok: {read['read']} read by the c2pa reader"
-    elif not_checked[0]:
-        # the bytes showed a store (or could not be walked) and there is no reader
-        stats.stages["provenance"] = (f"ok: {not_checked[0]} not checked: "
-                                      f"{library[1] or 'see each file'}")
+    elif not_checked:
+        # the bytes showed a store (or could not be walked) and there is no reader, or
+        # they are a format the reader does not read: each reason said apart
+        stats.stages["provenance"] = "ok: " + "; ".join(
+            f"{n} not checked: {why or 'see each file'}"
+            for why, n in sorted(not_checked.items(), key=lambda kv: (-kv[1], kv[0])))
     else:
         stats.stages["provenance"] = "ok: no manifest store for the reader"
 

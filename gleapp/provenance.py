@@ -520,6 +520,58 @@ class _Blocks:
         self.known: bool = False
         self.xmp: list[bytes] = []
         self.stores: list[str] = []       # where a block that carries C2PA was seen
+        self.unsupported: str | None = None   # a key of UNSUPPORTED_CONTAINERS
+
+
+# The containers c2pa-rs 0.91.0 does not read, among the pictures and videos GLEAPP
+# processes, each with the MIME types and extensions c2pa names formats by. Handed
+# one with no format, the reader sniffs the bytes and answers NotSupported, and a
+# reader process was started for every 25 of them to say so; without the library
+# each was "the c2pa library is not installed", which the library would not change.
+# Told apart here by their leading bytes, never their name, they are not_checked with
+# UNSUPPORTED at once, with the library or without it. tests/test_provenance_signed.py
+# holds the names to Reader.get_supported_mime_types() and each container to what the
+# reader answers. A container not recognised here still goes to the reader.
+UNSUPPORTED_CONTAINERS = {
+    "BMP": ("image/bmp", "image/x-ms-bmp", "bmp"),
+    "Matroska or WebM": ("video/x-matroska", "video/webm", "mkv", "webm"),
+    "ASF (WMV)": ("video/x-ms-wmv", "video/x-ms-asf", "wmv", "asf"),
+    "FLV": ("video/x-flv", "flv"),
+    "MPEG program or elementary stream": ("video/mpeg", "mpg", "mpeg"),
+    "MPEG transport stream": ("video/mp2t", "ts", "m2ts", "mts"),
+    "JPEG 2000": ("image/jp2", "image/jpx", "jp2", "j2k", "jpx"),
+    "KTX": ("image/ktx", "image/ktx2", "ktx", "ktx2"),
+}
+_ASF_HEADER = bytes.fromhex("3026b2758e66cf11a6d900aa0062ce6c")
+_BMP_INFO_SIZES = (12, 16, 40, 52, 56, 64, 108, 124)
+_HEAD = 1024            # bytes read to tell the container apart
+
+
+def _unsupported_container(head: bytes) -> str | None:
+    """Which of ``UNSUPPORTED_CONTAINERS`` the leading bytes are, or None."""
+    if head[:2] == b"BM" and len(head) >= 18 and \
+            struct.unpack("<I", head[14:18])[0] in _BMP_INFO_SIZES:
+        return "BMP"
+    if head[:4] == b"\x1a\x45\xdf\xa3":                 # EBML
+        return "Matroska or WebM"
+    if head[:16] == _ASF_HEADER:
+        return "ASF (WMV)"
+    if head[:4] == b"FLV\x01":
+        return "FLV"
+    if head[:4] in (b"\x00\x00\x01\xba", b"\x00\x00\x01\xb3"):   # pack, sequence header
+        return "MPEG program or elementary stream"
+    # five packets in a row starting with the sync byte, plain (188 bytes) or with the
+    # 4-byte time code of M2TS (192); a GIF starts with the same byte, "G"
+    if head[:3] != b"GIF" and any(
+            len(head) > first + 4 * size and
+            all(head[first + k * size] == 0x47 for k in range(5))
+            for first, size in ((0, 188), (4, 192))):
+        return "MPEG transport stream"
+    if head[4:12] == b"jP  \r\n\x87\n" or head[:4] == b"\xff\x4f\xff\x51":
+        return "JPEG 2000"                              # the JP2 signature, a codestream
+    if head[:12] in (b"\xabKTX 11\xbb\r\n\x1a\n", b"\xabKTX 20\xbb\r\n\x1a\n"):
+        return "KTX"
+    return None
 
 
 def _read(fh: BinaryIO, n: int) -> bytes:
@@ -808,7 +860,7 @@ def scan_blocks(path: str | Path) -> _Blocks:
             fh.seek(0, 2)
             size = fh.tell()
             fh.seek(0)
-            head = fh.read(16)
+            head = fh.read(_HEAD)
             if head[:3] == b"\xff\xd8\xff":
                 _jpeg(fh, out)
             elif head[:8] == b"\x89PNG\r\n\x1a\n":
@@ -819,6 +871,8 @@ def scan_blocks(path: str | Path) -> _Blocks:
                 _tiff(fh, out)
             elif head[4:8] in (b"ftyp", b"moov", b"mdat", b"wide", b"free", b"uuid"):
                 _isobmff(fh, out, size)
+            else:
+                out.unsupported = _unsupported_container(head)
         except (OSError, struct.error, IndexError, ValueError):
             out.known = False         # read part way: let the library decide
     return out
@@ -1178,6 +1232,11 @@ def prescan(path: str | Path, *, library: tuple[bool, str | None] | None = None
         # the whole container was read and holds none: no reader is needed to say so
         record["state"] = "absent"
         record["state_reason"] = ABSENT_BY_SCAN
+        return record, None
+    if blocks.unsupported:
+        # what the reader would answer, without starting it (UNSUPPORTED_CONTAINERS)
+        record["state_reason"] = UNSUPPORTED
+        record["container"] = blocks.unsupported
         return record, None
     usable, why = library if library is not None else library_available()
     if not usable:

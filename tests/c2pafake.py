@@ -184,6 +184,30 @@ class FakeC2pa(types.ModuleType):
         return "0.0.0-standin"
 
 
+def unsupported_samples() -> list[tuple[str, str, bytes]]:
+    """(container, file name, bytes) for each way of each container
+    gleapp.provenance.UNSUPPORTED_CONTAINERS names: as much of a file as its leading
+    bytes need, for GLEAPP to tell it apart and for the reader to sniff it."""
+    bmp = io.BytesIO()
+    Image.new("RGB", (8, 8), (10, 20, 30)).save(bmp, "BMP")
+    ebml = bytes.fromhex("1a45dfa39f4286810142f7810142f2810442f381084282")
+    return [
+        ("BMP", "a.bmp", bmp.getvalue()),
+        ("Matroska or WebM", "a.mkv", ebml + b"\x88matroska" + bytes(64)),
+        ("Matroska or WebM", "a.webm", ebml + b"\x84webm" + bytes(64)),
+        ("ASF (WMV)", "a.wmv", bytes.fromhex("3026b2758e66cf11a6d900aa0062ce6c") + bytes(64)),
+        ("FLV", "a.flv", b"FLV\x01\x05\x00\x00\x00\x09" + bytes(64)),
+        ("MPEG program or elementary stream", "a.mpg", b"\x00\x00\x01\xba" + bytes(64)),
+        ("MPEG program or elementary stream", "b.mpg", b"\x00\x00\x01\xb3" + bytes(64)),
+        ("MPEG transport stream", "a.ts", (b"\x47" + bytes(187)) * 6),
+        ("MPEG transport stream", "a.m2ts", (bytes(4) + b"\x47" + bytes(187)) * 6),
+        ("JPEG 2000", "a.jp2", bytes.fromhex("0000000c6a5020200d0a870a") + bytes(64)),
+        ("JPEG 2000", "a.j2k", b"\xff\x4f\xff\x51" + bytes(64)),
+        ("KTX", "a.ktx", b"\xabKTX 11\xbb\r\n\x1a\n" + bytes(64)),
+        ("KTX", "a.ktx2", b"\xabKTX 20\xbb\r\n\x1a\n" + bytes(64)),
+    ]
+
+
 def read_in_process(path, trust=None) -> dict:
     """One file read the way the reader process reads it, but in this process, so the
     stand-in a test installed is the library used. ``trust`` defaults to the lists
