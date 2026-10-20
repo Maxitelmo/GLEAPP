@@ -256,6 +256,27 @@ def _blocking(failures: list[str]) -> list[str]:
             if c not in _TOLERATED and not c.startswith(_TOLERATED_PREFIXES)]
 
 
+# Without a time-stamp the validator checks the signer's certificate against the time
+# of reading, so one that has expired since makes the manifest Invalid whenever it was
+# signed. A list of codes reads the same as a manifest that was tampered with; when
+# that is the only failure, the state says it in words. Measured on c2pa-rs 0.91.0: a
+# Canva-signed PNG and synthetic samples whose chains had expired, each with
+# claimSignature.validated and its hard binding matching.
+EXPIRED_UNSTAMPED = ("the signer's certificate has expired, and no time-stamp shows the "
+                     "manifest was signed while it was valid; that is the only failure "
+                     "that makes it invalid")
+
+
+def _expired_unstamped(state: str, failures: list[str], codes: dict[str, list[dict]],
+                       signed_time: Any) -> bool:
+    """Whether ``state`` is invalid for one reason alone: the signer's certificate has
+    expired, and nothing time-stamps the signature (no signed time, no timeStamp code)."""
+    stamped = bool(signed_time) or any(str(c.get("code", "")).startswith("timeStamp.")
+                                       for entries in codes.values() for c in entries)
+    return (state == "invalid" and not stamped
+            and set(_blocking(failures)) == {"signingCredential.expired"})
+
+
 def _state(validation_state: Any, success: list[str], failures: list[str],
            trust_list_uri: str | None, tsa_uris: frozenset) -> tuple[str, str | None]:
     """(state, reason). ``failures`` is the current validation only: the active
@@ -442,6 +463,10 @@ def _ingredients(store: dict, manifest: dict, results: dict, tsa_uris: frozenset
         named = [m.group(1) for c in now["success"] if c["code"] == "signingCredential.trusted"
                  for m in [_LIST_IN_EXPLANATION.search(c.get("explanation", ""))] if m]
         state, reason = _state(None, success, failures, named[0] if named else None, tsa_uris)
+        if _expired_unstamped(state, failures,
+                              {k: recorded[k] + now[k] for k in recorded},
+                              (child.get("signature_info") or {}).get("time")):
+            reason = EXPIRED_UNSTAMPED
         dst, _action = _dst(child)
         entry.update(dst=dst, state=state, signer=_signer(child),
                      signature_validated="claimSignature.validated" in success)
@@ -484,6 +509,9 @@ def parse_manifest_store(store: dict, *, tsa_uris: Iterable[str] = ()) -> dict:
                            trust_list_uri, tsa_uris)
     if state not in VALID_STATES and not _blocking(own) and _blocking(failures):
         reason = "an ingredient does not validate (see Ingredients)"
+    elif _expired_unstamped(state, failures, codes,
+                            (manifest.get("signature_info") or {}).get("time")):
+        reason = EXPIRED_UNSTAMPED
     dst, action = _dst(manifest)
     record: dict[str, Any] = {
         "state": state,
