@@ -274,12 +274,92 @@ def test_a_signed_clip(tmp_path, chain):
     assert pv.dst_class(rec) == "generative_ai"
 
 
-def test_a_container_the_scan_does_not_walk_is_left_to_the_reader(tmp_path):
-    """GLEAPP's scan walks JPEG, PNG, WebP, TIFF and ISOBMFF. A GIF goes to the reader,
-    which reads it and finds nothing in it. A BMP the reader does not support, which
-    says nothing about a manifest; GLEAPP records that from the bytes without asking
-    it (UNSUPPORTED_CONTAINERS)."""
-    gif = _read(_write(tmp_path, "a.gif", _picture("GIF")))
+def _animation() -> bytes:
+    """Three frames, with a loop extension, a comment and a graphic control extension
+    per frame."""
+    frames = [Image.new("RGB", (48, 32), (60 * i, 110, 170)) for i in range(3)]
+    buf = io.BytesIO()
+    frames[0].save(buf, "GIF", save_all=True, append_images=frames[1:], loop=0,
+                   duration=100, comment=b"synthetic")
+    return buf.getvalue()
+
+
+def _avi_clip(tmp_path) -> bytes:
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np  # pylint: disable=import-outside-toplevel
+    raw = tmp_path / "raw.avi"
+    writer = cv2.VideoWriter(str(raw), cv2.VideoWriter_fourcc(*"MJPG"), 10, (64, 48))
+    assert writer.isOpened(), "OpenCV could not write an AVI here"
+    for i in range(10):
+        writer.write(np.full((48, 64, 3), i * 20, np.uint8))
+    writer.release()
+    return raw.read_bytes()
+
+
+def _signed_where_the_scan_looks(tmp_path, chain, name, src, mime, where):
+    """``src`` is absent from its bytes; signed, the walk sees the store where the
+    library wrote it, leaves the file to the reader, and the reader reads it."""
+    plain = _read(_write(tmp_path, "plain " + name, src))
+    assert (plain["state"], plain["state_reason"]) == ("absent", pv.ABSENT_BY_SCAN), name
+    p = _write(tmp_path, name, sign(chain, src, mime, created("trainedAlgorithmicMedia")))
+    assert pv.scan_blocks(p).stores == [where], name
+    rec = _read(p)
+    assert rec["store_in_bytes"] == where, name
+    assert rec["state"] == "valid_untrusted", (name, rec["codes"]["failure"])
+    assert pv.dst_class(rec) == "generative_ai", name
+
+
+def test_a_gif_signed_by_the_library_holds_its_store_where_the_scan_looks(tmp_path, chain):
+    """A GIF the walk finishes with no store in it is recorded absent from its bytes,
+    so the walk has to see every store the library writes: a still and an animation."""
+    for name, src in (("still.gif", _picture("GIF")), ("animation.gif", _animation())):
+        _signed_where_the_scan_looks(tmp_path, chain, name, src, "image/gif",
+                                     "GIF C2PA_GIF extension")
+
+
+def test_an_avi_signed_by_the_library_holds_its_store_where_the_scan_looks(tmp_path, chain):
+    """The same for an MJPEG AVI written by OpenCV."""
+    _signed_where_the_scan_looks(tmp_path, chain, "clip.avi", _avi_clip(tmp_path),
+                                 "video/avi", "AVI C2PA")
+
+
+REMOTE = "https://example.invalid/" + "m" * 300 + "/manifest.c2pa"
+
+
+def test_a_gif_or_avi_whose_manifest_is_kept_remotely_is_not_absent(tmp_path, chain):
+    """Signed with the store left out and its address written in XMP: in a GIF the
+    library writes it as sub-blocks, so this address, longer than one, is not in the
+    file as one run of bytes. The walk finds it whole in either, the file goes to the
+    reader, and the manifest is recorded as remote and not fetched."""
+    sources = [("remote.gif", _picture("GIF"), "image/gif"),
+               ("remote.avi", _avi_clip(tmp_path), "video/avi")]
+    for name, src, mime in sources:
+        data = sign(chain, src, mime, created("trainedAlgorithmicMedia"), remote=REMOTE)
+        assert (REMOTE.encode() in data) is (mime == "video/avi"), name
+        p = _write(tmp_path, name, data)
+        assert pv.scan_blocks(p).known, name
+        rec = _read(p)
+        assert (rec["state"], rec["state_reason"]) == ("not_checked", pv.REMOTE_NOT_FETCHED)
+        assert rec["remote_url"] == REMOTE, name
+
+
+def test_a_stray_byte_before_a_gif_store_does_not_hide_it(tmp_path, chain):
+    """One byte between the color table and the store: Pillow skips it, c2pa-rs 0.91.0
+    stops on it and the walk does too, short of the store, so the reader decides."""
+    signed = sign(chain, _picture("GIF"), "image/gif", created("trainedAlgorithmicMedia"))
+    at = signed.index(b"\x21\xff\x0bC2PA_GIF")
+    p = _write(tmp_path, "padded.gif", signed[:at] + b"\x00" + signed[at:])
+    assert Image.open(p).size == (48, 32)
+    assert pv.scan_blocks(p).known is False
+    assert _read(p)["state"] not in ("absent", "not_checked")
+
+
+def test_a_container_the_scan_cannot_finish_is_left_to_the_reader(tmp_path):
+    """GLEAPP's scan walks JPEG, PNG, WebP, AVI, GIF, TIFF and ISOBMFF. A GIF cut short
+    of its trailer goes to the reader, which reads it and finds nothing in it. A BMP the
+    reader does not support, which says nothing about a manifest; GLEAPP records that
+    from the bytes without asking it (UNSUPPORTED_CONTAINERS)."""
+    gif = _read(_write(tmp_path, "cut.gif", _picture("GIF")[:-1]))
     assert gif["state"] == "absent"
     assert gif["state_reason"] == pv.ABSENT_BY_READER
     bmp = _read(_write(tmp_path, "a.bmp", _picture("BMP")))
@@ -293,7 +373,7 @@ def test_the_containers_settled_unsupported_are_ones_the_library_does_not_read(t
     types or extensions is among the formats the library's Reader lists, and the
     reader, handed each sample as GLEAPP hands it a file it does not walk (no format,
     in the worker process), answers NotSupported. A version that reads one fails here.
-    The GIF and AVI the scan leaves to the reader are ones it lists."""
+    The GIF and AVI the scan walks are ones it lists: one holding a store goes to it."""
     import c2pa  # pylint: disable=import-outside-toplevel,import-error
     supported = {str(s).lower() for s in c2pa.Reader.get_supported_mime_types()}
     for container, names in pv.UNSUPPORTED_CONTAINERS.items():

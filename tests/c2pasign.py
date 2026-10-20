@@ -72,13 +72,18 @@ def created(dst_term: str) -> list:
 
 
 def sign(chain, src: bytes, mime: str, actions: list, *, ingredient: bytes | None = None,
-         generator: str = "Synthetic Generator") -> bytes:
+         generator: str = "Synthetic Generator", remote: str | None = None) -> bytes:
+    """``src`` signed. With ``remote`` the store is left out of the file and only its
+    address, ``remote``, is written in the file's XMP."""
     signer, _ca = chain
     manifest = {"claim_generator_info": [{"name": generator, "version": "1.0"}],
                 "title": "synthetic", "assertions": [
                     {"label": "c2pa.actions", "data": {"actions": actions}}]}
     builder = c2pa.Builder(manifest, context=c2pa.Context(
         settings=c2pa.Settings.from_dict(_SIGN_SETTINGS)))
+    if remote is not None:
+        builder.set_no_embed()
+        builder.set_remote_url(remote)
     if ingredient is not None:
         builder.add_ingredient({"title": "ingredient.jpg", "relationship": "parentOf",
                                 "label": "ingredient-1"}, "image/jpeg", io.BytesIO(ingredient))

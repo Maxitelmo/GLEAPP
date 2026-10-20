@@ -2020,7 +2020,7 @@ Each picture and video gets one state (C2PA 2.2, §14.3, *Validation states*):
 
 | State | Meaning |
 |---|---|
-| **No Content Credentials** (`absent`) | No manifest store. Either GLEAPP walked the file's container from its start to its end (a JPEG up to its image data, a PNG, a WebP, a TIFF's first IFD, the top level of an ISOBMFF file such as HEIC, AVIF, MP4 or MOV) and found neither a store nor a reference to one, or the c2pa reader found none. A container the walk cannot finish, a stray byte or a cut-off file, goes to the reader. The details say which. |
+| **No Content Credentials** (`absent`) | No manifest store. Either GLEAPP walked the file's container from its start to its end (a JPEG up to its image data, a PNG, a GIF to its trailer, a WebP or an AVI to the size its RIFF header gives, a TIFF's first IFD, the top level of an ISOBMFF file such as HEIC, AVIF, MP4 or MOV) and found neither a store nor a reference to one, or the c2pa reader found none. A container the walk cannot finish, a stray byte or a cut-off file, goes to the reader. The details say which. |
 | **Malformed** | A store that is not well formed: the reader could not parse it, or reported a well-formedness failure (the codes C2PA's Asset Rubrics treat as such). |
 | **Invalid** | Well formed, but validation failed. One such failure is a hard binding that does not match the content the manifest was signed for: for example, the content changed after signing, or the manifest belongs to other content. |
 | **Valid, signer not on a trust list** (`valid_untrusted`) | The signature validates and the content matches it, but the signer's certificate does not chain to any trust list GLEAPP holds. Who signed is not established. |
@@ -2170,8 +2170,7 @@ again alone; only a file that takes the ten minutes by itself is recorded as
   does not read at all (BMP, Matroska and WebM, WMV, FLV, MPEG, MPEG transport stream,
   JPEG 2000, KTX) is recognised from its bytes and is **Not checked: the c2pa reader
   does not support this format**, with the library or without it. Any other format
-  GLEAPP does not walk, such as GIF or AVI, goes to the reader when the library is
-  installed.
+  GLEAPP does not walk goes to the reader when the library is installed.
 - **Older cases** are not read on their own. Open the sidebar's **Content
   Credentials** section and click **Read Content Credentials**, or run
   `gleapp -c CASE provenance` (`--force` reads everything again). With the c2pa

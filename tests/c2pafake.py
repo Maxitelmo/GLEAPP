@@ -120,6 +120,74 @@ def app11_store() -> bytes:
     return segment(0xEB, b"JP" + b"\x00\x01" + b"\x00\x00\x00\x01" + jumb)
 
 
+def sub_blocks(data: bytes) -> bytes:
+    """``data`` as GIF data sub-blocks of at most 255 bytes, and the zero length that
+    ends them."""
+    return b"".join(bytes((len(data[i:i + 255]),)) + data[i:i + 255]
+                    for i in range(0, len(data), 255)) + b"\x00"
+
+
+def gif_application(ident: bytes, data: bytes) -> bytes:
+    """A GIF Application Extension: its identifier and auth code (11 bytes), then
+    ``data`` as sub-blocks."""
+    return b"\x21\xff\x0b" + ident + sub_blocks(data)
+
+
+def gif_store() -> bytes:
+    """The Application Extension c2pa-rs writes a store in: what the byte scan takes
+    for a store. No reader can validate it."""
+    return gif_application(b"C2PA_GIF\x01\x00\x00", b"synthetic store")
+
+
+# The XMP specification's "magic trailer" for GIF (Part 3): read as sub-blocks, the
+# packet before it always lands on its last byte, the zero length.
+XMP_MAGIC_TRAILER = bytes([1, *range(255, -1, -1)])
+
+
+def gif_xmp(packet: bytes, *, as_sub_blocks: bool = False) -> bytes:
+    """A GIF's XMP Application Extension, the packet written raw and followed by the
+    magic trailer, as the XMP specification writes it, or as sub-blocks, as c2pa-rs
+    does."""
+    if as_sub_blocks:
+        return gif_application(b"XMP DataXMP", packet + XMP_MAGIC_TRAILER)
+    return b"\x21\xff\x0bXMP DataXMP" + packet + XMP_MAGIC_TRAILER + b"\x00"
+
+
+def gif(*blocks: bytes, frames: int = 1, after: bytes = b"") -> bytes:
+    """A GIF drawn by Pillow with a loop extension, a comment and a graphic control
+    extension per frame, ``blocks`` right after its global color table, where c2pa-rs
+    writes a store, and ``after`` just before its trailer."""
+    images = [Image.new("RGB", (16, 12), (40 * i, 90, 160)) for i in range(frames)]
+    buf = io.BytesIO()
+    images[0].save(buf, "GIF", save_all=True, append_images=images[1:], loop=0,
+                   duration=100, comment=b"synthetic")
+    data = buf.getvalue()
+    flags = data[10]                    # the logical screen descriptor's
+    pre = 13 + ((3 << ((flags & 7) + 1)) if flags & 0x80 else 0)
+    return data[:pre] + b"".join(blocks) + data[pre:-1] + after + data[-1:]
+
+
+def riff_chunk(ctype: bytes, body: bytes) -> bytes:
+    """A RIFF chunk, padded to an even length."""
+    return ctype + struct.pack("<I", len(body)) + body + b"\x00" * (len(body) & 1)
+
+
+def avi(*chunks: bytes) -> bytes:
+    """The chunks of an AVI as its RIFF lays them out, a header list, a movie list
+    with a frame of odd length (so a pad byte) and an index, then ``chunks``. Nothing
+    decodes it; the walk reads only where the chunks lie."""
+    body = (riff_chunk(b"LIST", b"hdrl" + riff_chunk(b"avih", bytes(56)))
+            + riff_chunk(b"LIST", b"movi" + riff_chunk(b"00dc", bytes(31)))
+            + riff_chunk(b"idx1", bytes(16)) + b"".join(chunks))
+    return riff_chunk(b"RIFF", b"AVI " + body)
+
+
+def avix(*chunks: bytes) -> bytes:
+    """A RIFF chunk of form AVIX, in which an AVI past 1 GB (OpenDML) goes on."""
+    return riff_chunk(b"RIFF", b"AVIX" + riff_chunk(b"LIST", b"movi" + riff_chunk(
+        b"00dc", bytes(31))) + b"".join(chunks))
+
+
 # -- the stand-in ---------------------------------------------------------------------
 
 

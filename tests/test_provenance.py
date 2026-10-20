@@ -559,6 +559,104 @@ def test_a_webp_c2pa_chunk_and_xmp_chunk(tmp_path):
     assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "capture"
 
 
+WALKED_WHOLE = [
+    ("still.gif", cf.gif(), "image/gif"),
+    ("animation.gif", cf.gif(frames=3), "image/gif"),
+    ("clip.avi", cf.avi(), "video/avi"),
+    ("past 1 GB.avi", cf.avi() + cf.avix() + cf.avix(), "video/avi"),
+]
+
+
+@pytest.mark.parametrize("name, data, mime", WALKED_WHOLE, ids=[w[0] for w in WALKED_WHOLE])
+def test_a_gif_or_avi_walked_to_its_end_holds_no_store_without_asking_the_reader(
+        tmp_path, fake_c2pa, name, data, mime):
+    """A GIF from its screen descriptor to its trailer, every frame's blocks between;
+    an AVI's RIFF to the size its header gives, and each AVIX after it. Both went to a
+    reader process before, to hear that there was no store."""
+    fake_c2pa(raises=lambda f: AssertionError("the reader must not be opened"))
+    p = tmp_path / name
+    p.write_bytes(data)
+    blocks = pv.scan_blocks(p)
+    assert (blocks.mime, blocks.known, blocks.stores) == (mime, True, [])
+    rec = read_in_process(p)
+    assert (rec["state"], rec["state_reason"]) == ("absent", pv.ABSENT_BY_SCAN)
+
+
+@pytest.mark.parametrize("as_sub_blocks", [False, True], ids=["raw", "sub-blocks"])
+def test_a_gif_c2pa_extension_and_xmp_extension(tmp_path, as_sub_blocks):
+    """The extension c2pa-rs writes a store in, and XMP as the XMP specification writes
+    it (the packet raw, then the magic trailer) and as c2pa-rs writes it (sub-blocks)."""
+    p = tmp_path / "a.gif"
+    p.write_bytes(cf.gif(cf.gif_store(), cf.gif_xmp(
+        cf.xmp_packet(DST + "trainedAlgorithmicMedia"), as_sub_blocks=as_sub_blocks),
+        frames=2))
+    blocks = pv.scan_blocks(p)
+    assert blocks.known and blocks.stores == ["GIF C2PA_GIF extension"]
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "generative_ai"
+
+
+@pytest.mark.parametrize("as_sub_blocks", [False, True], ids=["raw", "sub-blocks"])
+def test_a_remote_address_in_gif_xmp_is_found_whole(tmp_path, fake_c2pa, as_sub_blocks):
+    """c2pa-rs writes a GIF's XMP as sub-blocks, so a length byte every 255 bytes cuts
+    an address that long, and the walk finishes. Searched as the bytes lie, the address
+    was found with the length byte in it (and with none, the GIF would be "No Content
+    Credentials" from its bytes); c2pa-rs reads it and answers that the manifest is
+    remote. Raw XMP is searched as it lies."""
+    url = "https://example.invalid/" + "m" * 300 + "/manifest.c2pa"
+    xmp = (b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description '
+           b'xmlns:dcterms="http://purl.org/dc/terms/" '
+           b'dcterms:provenance="' + url.encode() + b'"/></rdf:RDF></x:xmpmeta>')
+    data = cf.gif(cf.gif_xmp(xmp, as_sub_blocks=as_sub_blocks))
+    assert (url.encode() in data) is not as_sub_blocks
+    lib = fake_c2pa(raises=lambda f: f.C2paError.RemoteManifest("remote"))
+    p = tmp_path / "r.gif"
+    p.write_bytes(data)
+    assert pv.scan_blocks(p).known
+    rec = read_in_process(p)
+    assert len(lib.calls) == 1
+    assert (rec["state"], rec["state_reason"]) == ("not_checked", pv.REMOTE_NOT_FETCHED)
+    assert rec["remote_url"] == url
+
+
+def test_a_gif_store_c2pa_rs_does_not_look_for_is_still_left_to_the_reader(
+        tmp_path, fake_c2pa):
+    """c2pa-rs looks for a store only before the first image and only under auth code
+    01 00 00: past the image, or under another code, a store read as no manifest
+    (c2pa-rs 0.91.0). The walk takes the extension for a store wherever it is and
+    whatever its code, so the reader decides, and the record says what was seen."""
+    other_code = cf.gif_application(b"C2PA_GIF\x02\x00\x00", b"synthetic store")
+    for name, data in (("late.gif", cf.gif(after=cf.gif_store())),
+                       ("other code.gif", cf.gif(other_code))):
+        lib = fake_c2pa(raises=lambda f: f.C2paError.ManifestNotFound("none"))
+        p = tmp_path / name
+        p.write_bytes(data)
+        rec = read_in_process(p)
+        assert len(lib.calls) == 1, name
+        assert rec["state_reason"].endswith("in GIF C2PA_GIF extension"), name
+
+
+@pytest.mark.parametrize("xmp_chunk", [b"XMP ", b"_PMX"])
+def test_an_avi_c2pa_chunk_and_xmp_chunk(tmp_path, xmp_chunk):
+    """XMP in the chunk c2pa-rs writes, "XMP ", or the XMP specification's for AVI."""
+    p = tmp_path / "a.avi"
+    p.write_bytes(cf.avi(cf.riff_chunk(b"C2PA", b"synthetic store"),
+                         cf.riff_chunk(xmp_chunk, cf.xmp_packet(DST + "screenCapture"))))
+    blocks = pv.scan_blocks(p)
+    assert blocks.mime == "video/avi" and blocks.known
+    assert blocks.stores == ["AVI C2PA"]
+    assert pv.classify_dst(pv.xmp_declaration(blocks.xmp)["uri"]) == "screen"
+
+
+def test_a_store_in_an_avix_is_left_to_the_reader(tmp_path, fake_c2pa):
+    """c2pa-rs reads a store only in an AVI's first RIFF: one in an AVIX after it read
+    as no manifest (c2pa-rs 0.91.0). The walk sees it, so the reader decides."""
+    lib = fake_c2pa(raises=lambda f: f.C2paError.ManifestNotFound("none"))
+    p = tmp_path / "large.avi"
+    p.write_bytes(cf.avi() + cf.avix(cf.riff_chunk(b"C2PA", b"synthetic store")))
+    rec = read_in_process(p)
+    assert len(lib.calls) == 1 and rec["store_in_bytes"] == "AVI C2PA"
+
+
 def test_isobmff_c2pa_and_xmp_uuid_boxes(tmp_path):
     ftyp = _box(b"ftyp", b"isom" + bytes(4) + b"isommp42")
     # pylint: disable=protected-access
@@ -621,6 +719,21 @@ def _webp_claiming_more() -> bytes:
     return bytes(raw)
 
 
+def _avi_claiming_more() -> bytes:
+    raw = bytearray(cf.avi())
+    raw[4:8] = struct.pack("<I", len(raw) - 8 + 64)       # 64 bytes more than there are
+    return bytes(raw)
+
+
+def _avi_with_a_stray_byte() -> bytes:
+    """A byte after the header list, the RIFF's size counting it."""
+    raw = bytearray(cf.avi())
+    at = 12 + 8 + struct.unpack("<I", raw[16:20])[0]
+    raw[at:at] = b"\x00"
+    raw[4:8] = struct.pack("<I", len(raw) - 8)
+    return bytes(raw)
+
+
 def _tiff_with_too_many_entries() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (8, 8), "white").save(buf, "TIFF")
@@ -636,6 +749,19 @@ WALKED_SHORT = {
         cf.segment(0xE2, b"synthetic") + b"\x00" + cf.app11_store()),
     "png, no IEND": lambda: _png()[:-12],
     "webp, the RIFF longer than the file": _webp_claiming_more,
+    "avi, the RIFF longer than the file": _avi_claiming_more,
+    "avi, a stray byte between two chunks": _avi_with_a_stray_byte,
+    "avi, an AVIX cut short": lambda: cf.avi() + cf.avix()[:-4],
+    "gif, no trailer": lambda: cf.gif(frames=2)[:-1],
+    "gif, an image cut short": lambda: cf.gif()[:-4],
+    # each of these before a store made c2pa-rs 0.91.0 stop, the store not read
+    "gif, a stray byte between two blocks": lambda: cf.gif(b"\x00"),
+    "gif, a plain text extension": lambda: cf.gif(b"\x21\x01\x0c" + bytes(12) + b"\x00"),
+    "gif, a graphic control extension of 5 bytes": lambda: cf.gif(
+        b"\x21\xf9\x05" + bytes(5) + b"\x00"),
+    "gif, an extension label GIF89a does not define": lambda: cf.gif(b"\x21\x02\x03abc\x00"),
+    "gif, an application extension of 10 bytes": lambda: cf.gif(
+        b"\x21\xff\x0a" + bytes(10) + b"\x00"),
     "tiff, more entries than an IFD holds": _tiff_with_too_many_entries,
     "mp4, bytes past the last box": lambda: (_box(b"ftyp", b"isom" + bytes(4) + b"isom")
                                              + _box(b"mdat", bytes(16)) + b"\x00\x00\x00"),
@@ -716,13 +842,16 @@ def test_every_container_the_reader_does_not_read_has_a_sample():
 
 
 def test_what_the_reader_can_read_is_still_left_to_it(tmp_path):
-    """A GIF or an AVI can hold a store and GLEAPP does not walk either, so the reader
-    decides. A GIF starts with the transport stream's sync byte, "G", and one with that
-    byte at every packet's place is still a GIF. Bytes not recognised go to the reader."""
+    """A GIF or an AVI the walk cannot finish can hold a store the reader reads, so the
+    reader decides: c2pa-rs read a GIF's store with a stray byte past it or the file cut
+    short past it, and an AVI's with its RIFF claiming more than the file holds (c2pa-rs
+    0.91.0). A GIF starts
+    with the transport stream's sync byte, "G", and one with that byte at every
+    packet's place is still a GIF. Bytes not recognised go to the reader."""
     gif = bytearray(b"GIF89a" + bytes(6 * 188))
     for k in range(6):
         gif[k * 188] = 0x47
-    avi = b"RIFF" + (100).to_bytes(4, "little") + b"AVI " + bytes(100)
+    avi = b"RIFF" + (100).to_bytes(4, "little") + b"AVI " + bytes(50)
     for name, data in (("a.gif", bytes(gif)), ("a.avi", avi), ("a.bin", bytes(64))):
         p = tmp_path / name
         p.write_bytes(data)

@@ -474,9 +474,9 @@ def test_the_reader_process_is_handed_no_path_on_its_command_line(tmp_path, monk
     assert [i["path"] for i in json.loads(seen["input"])["items"]] == [str(p)]
 
 
-def _gif(path, shade: int) -> None:
-    from PIL import Image  # pylint: disable=import-outside-toplevel
-    Image.new("RGB", (16, 16), (shade, 40, 90)).save(path)
+def _held(path, shade: int) -> None:
+    """A JPEG holding what the walk takes for a store, so the reader is asked."""
+    path.write_bytes(cf.jpeg(cf.app11_store(), color=(shade, 9, 9)))
 
 
 def _counted_library(monkeypatch) -> list:
@@ -494,8 +494,9 @@ def _counted_library(monkeypatch) -> list:
 def test_a_run_checks_for_the_library_once_and_walks_each_file_once(tmp_path, monkeypatch):
     """Whether the c2pa library can be used is checked once for a processing run: the
     check lists the working directory, 12 to 14 ms on Windows, and every picture or
-    video the walk does not settle (a GIF, a BMP, an AVI) asked for it again. The
-    reader stage reads from what processing's walk found, so no file is walked twice."""
+    video the walk leaves to the reader (one holding a store, one the walk cannot
+    finish) asked for it again. The reader stage reads from what processing's walk
+    found, so no file is walked twice."""
     _slow_reader(tmp_path, monkeypatch)
     checks = _counted_library(monkeypatch)
     walks: list[str] = []
@@ -508,9 +509,8 @@ def test_a_run_checks_for_the_library_once_and_walks_each_file_once(tmp_path, mo
     monkeypatch.setattr(pv, "prescan", prescan)
     ev = tmp_path / "evidence"
     ev.mkdir()
-    for i in range(3):
-        (ev / f"stub{i}.jpg").write_bytes(cf.jpeg(cf.app11_store(), color=(i, 9, 9)))
-        _gif(ev / f"anim{i}.gif", 60 * i)
+    for i in range(6):
+        _held(ev / f"stub{i}.jpg", 40 * i)
     (ev / "plain.jpg").write_bytes(cf.jpeg(color=(1, 2, 3)))
     case = open_case(tmp_path / "case", create=True, examiner="t")
     try:
@@ -520,8 +520,7 @@ def test_a_run_checks_for_the_library_once_and_walks_each_file_once(tmp_path, mo
         assert len(checks) == 1
         assert sorted(walks) == sorted(p.name for p in ev.iterdir())
         rows = _rows(case)
-        for name in [f"{s}{i}.{e}" for i in range(3) for s, e in (("stub", "jpg"),
-                                                                  ("anim", "gif"))]:
+        for name in [f"stub{i}.jpg" for i in range(6)]:
             info = json.loads(rows[name]["c2pa_info"])
             assert rows[name]["c2pa_state"] == "absent", name
             assert info["state_reason"].startswith(pv.ABSENT_BY_READER), name
@@ -542,7 +541,7 @@ def test_a_pass_checks_for_the_library_once_whatever_its_batches(tmp_path, monke
     ev = tmp_path / "evidence"
     ev.mkdir()
     for i in range(5):
-        _gif(ev / f"anim{i}.gif", 40 * i)
+        _held(ev / f"stub{i}.jpg", 40 * i)
     case = open_case(tmp_path / "case", create=True, examiner="t")
     try:
         ingest_sources(case, [Source(name="ev", path=str(ev))])

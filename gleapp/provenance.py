@@ -667,22 +667,159 @@ def _png(fh: BinaryIO, out: _Blocks) -> None:
     out.known = clean
 
 
-def _webp(fh: BinaryIO, out: _Blocks, size: int) -> None:
-    """The chunks of the RIFF container, which has to end where its header says."""
-    out.mime = "image/webp"
-    fh.seek(4)
-    end = 8 + struct.unpack("<I", fh.read(4))[0]
-    pos = 12
-    while pos + 8 <= min(end, size):
-        fh.seek(pos)
-        head = fh.read(8)
-        ctype, length = head[:4], struct.unpack("<I", head[4:])[0]
-        if ctype == b"XMP ":
-            out.xmp.append(_read(fh, length))
-        elif ctype == b"C2PA":
-            out.stores.append("WebP C2PA")
-        pos += 8 + length + (length & 1)
-    out.known = pos == end <= size
+# The RIFF forms the walk reads: (MIME type, where a store is said to be seen).
+_RIFF_FORMS = {b"WEBP": ("image/webp", "WebP C2PA"), b"AVI ": ("video/avi", "AVI C2PA")}
+
+
+def _riff(fh: BinaryIO, out: _Blocks, size: int) -> None:
+    """The top-level chunks of a RIFF container, which have to end where its header
+    says. c2pa-rs (riff_io) puts a store in a top-level chunk "C2PA" of the first RIFF
+    and XMP in one named "XMP "; the XMP specification names AVI's "_PMX". An AVI past
+    1 GB (OpenDML) goes on in RIFF chunks of form AVIX, each walked the same way. c2pa-rs
+    reads a store only in the first RIFF (one in an AVIX read as no manifest, c2pa-rs
+    0.91.0), so the walk records one wherever it sees it and the reader decides. What
+    follows the last RIFF is read by neither."""
+    fh.seek(8)
+    form = fh.read(4)
+    out.mime, where = _RIFF_FORMS[form]
+    start = 0
+    while True:
+        fh.seek(start + 4)
+        end = start + 8 + struct.unpack("<I", _read(fh, 4))[0]
+        pos = start + 12
+        while pos + 8 <= min(end, size):
+            fh.seek(pos)
+            head = fh.read(8)
+            ctype, length = head[:4], struct.unpack("<I", head[4:])[0]
+            if ctype in (b"XMP ", b"_PMX"):
+                out.xmp.append(_read(fh, length))
+            elif ctype == b"C2PA" and where not in out.stores:
+                out.stores.append(where)
+            pos += 8 + length + (length & 1)
+        if not pos == end <= size:
+            return
+        if form != b"AVI ":
+            break
+        fh.seek(end)
+        nxt = fh.read(12)
+        if nxt[:4] != b"RIFF" or nxt[8:12] != b"AVIX":
+            break
+        start = end
+    out.known = True
+
+
+# GIF89a (https://www.w3.org/Graphics/GIF/spec-gif89a.txt): a block starts with an
+# extension introducer, an image separator or the trailer.
+_GIF_EXTENSION, _GIF_IMAGE, _GIF_TRAILER = 0x21, 0x2C, 0x3B
+_SUB_BLOCK_READ = 64 * 1024
+# What follows XMP in a GIF (the XMP specification, Part 3): 01, then FF down to 00.
+_XMP_MAGIC_TRAILER = bytes((1, *range(255, -1, -1)))
+
+
+def _past_sub_blocks(fh: BinaryIO) -> int:
+    """Past a chain of GIF data sub-blocks, each a length byte and that many bytes, and
+    the zero length that ends it: the position after it, where ``fh`` is left. Raises
+    ValueError when the file ends first. Image data is one sub-block per 255 bytes, so
+    the chain is followed through 64 KB reads, not a read per sub-block, and a run of
+    full sub-blocks (length 255, the next length byte 256 on) is passed with one slice.
+    A 16.7 MB GIF of 40 frames walked in 18 ms stepping through each sub-block and in
+    10 ms with the slices, most of it the reads (median of 20, Python 3.12, Windows)."""
+    while True:
+        at = fh.tell()
+        buf = fh.read(_SUB_BLOCK_READ)
+        if not buf:
+            raise ValueError("sub-blocks cut short")
+        pos = 0
+        while pos < len(buf):
+            if buf[pos] == 0xFF:
+                run = buf[pos::256]
+                pos += 256 * (len(run) - len(run.lstrip(b"\xff")))
+                if pos >= len(buf):
+                    break
+            if not buf[pos]:
+                fh.seek(at + pos + 1)
+                return at + pos + 1
+            pos += buf[pos] + 1
+        fh.seek(at + pos)
+
+
+def _sub_block_data(chain: bytes) -> bytes:
+    """The bytes a chain of sub-blocks carries, its length bytes left out."""
+    parts, pos = [], 0
+    while pos < len(chain) and chain[pos]:
+        parts.append(chain[pos + 1:pos + 1 + chain[pos]])
+        pos += 1 + chain[pos]
+    return b"".join(parts)
+
+
+def _gif(fh: BinaryIO, out: _Blocks) -> None:
+    """Every block of a GIF, from the logical screen descriptor to the trailer.
+    c2pa-rs (gif_io) puts a store in an Application Extension "C2PA_GIF", auth code
+    01 00 00, after the global color table, and looks for one only before the first
+    image: past it, or with another auth code, one read as no manifest (c2pa-rs
+    0.91.0). The walk records a "C2PA_GIF" extension wherever it is, so the reader
+    decides on it. XMP is an Application Extension "XMP Data", auth code "XMP".
+
+    Where c2pa-rs 0.91.0 does not walk a block as GIF89a lays it out, the walk stops
+    and leaves the file to the reader: it skips 11 bytes of a Plain Text Extension where
+    there are 13, takes a Graphic Control Extension as 6 bytes whatever its size says,
+    and stops at an extension label GIF89a does not define and at an Application
+    Extension whose fixed part is not 11 bytes. Measured with a signed GIF and each of
+    these, or a stray byte, before its store: "asset could not be parsed", the store
+    not read."""
+    out.mime = "image/gif"
+    fh.seek(10)
+    packed = _read(fh, 3)[0]                 # the logical screen descriptor's flags
+    if packed & 0x80:
+        fh.seek(3 << ((packed & 7) + 1), 1)  # the global color table
+    while True:
+        intro = fh.read(1)
+        if not intro or intro[0] not in (_GIF_EXTENSION, _GIF_IMAGE, _GIF_TRAILER):
+            return                           # a stray byte, or the end before the trailer
+        if intro[0] == _GIF_TRAILER:
+            break
+        if intro[0] == _GIF_IMAGE:
+            desc = _read(fh, 9)
+            if desc[8] & 0x80:
+                fh.seek(3 << ((desc[8] & 7) + 1), 1)   # a local color table
+            fh.seek(1, 1)                    # the LZW minimum code size
+            _past_sub_blocks(fh)
+            continue
+        label = fh.read(1)
+        if label == b"\xff":                 # Application Extension
+            head = _read(fh, 12)
+            if head[0] != 11:
+                return
+            if head[1:9] == b"C2PA_GIF":
+                if "GIF C2PA_GIF extension" not in out.stores:
+                    out.stores.append("GIF C2PA_GIF extension")
+                _past_sub_blocks(fh)
+            elif head[1:12] == b"XMP DataXMP":
+                at = fh.tell()
+                end = _past_sub_blocks(fh)
+                fh.seek(at)
+                chain = _read(fh, end - 1 - at)
+                fh.seek(end)
+                # the XMP specification writes the packet raw, then a "magic trailer"
+                # on which a sub-block reader lands whatever the packet; c2pa-rs writes
+                # packet and trailer as sub-blocks, whose last bytes never are the
+                # trailer. Searched as they lie, sub-blocks give a remote manifest's
+                # address with a length byte in it, one every 255 bytes.
+                if chain.endswith(_XMP_MAGIC_TRAILER):
+                    out.xmp.append(chain[:-len(_XMP_MAGIC_TRAILER)])
+                else:
+                    out.xmp.append(_sub_block_data(chain).removesuffix(_XMP_MAGIC_TRAILER))
+            else:
+                _past_sub_blocks(fh)
+        elif label == b"\xf9":               # Graphic Control Extension
+            gce = _read(fh, 6)
+            if gce[0] != 4 or gce[5] != 0:
+                return
+        elif label == b"\xfe":               # Comment Extension
+            _past_sub_blocks(fh)
+        else:                                # Plain Text Extension, or not GIF89a's
+            return
+    out.known = True
 
 
 def _tiff(fh: BinaryIO, out: _Blocks) -> None:
@@ -865,8 +1002,10 @@ def scan_blocks(path: str | Path) -> _Blocks:
                 _jpeg(fh, out)
             elif head[:8] == b"\x89PNG\r\n\x1a\n":
                 _png(fh, out)
-            elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
-                _webp(fh, out, size)
+            elif head[:4] == b"RIFF" and head[8:12] in _RIFF_FORMS:
+                _riff(fh, out, size)
+            elif head[:6] in (b"GIF87a", b"GIF89a"):
+                _gif(fh, out)
             elif head[:4] in (b"II*\x00", b"MM\x00*"):
                 _tiff(fh, out)
             elif head[4:8] in (b"ftyp", b"moov", b"mdat", b"wide", b"free", b"uuid"):

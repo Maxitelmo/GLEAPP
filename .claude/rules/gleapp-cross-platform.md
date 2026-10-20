@@ -1332,12 +1332,31 @@ holds the list to `Reader.get_supported_mime_types()` and to the reader's own an
 a sample of each, so a c2pa that starts reading one fails there.
 
 **The bytes settle absence only when the walk reaches the container's end.** A JPEG up to
-its image data, a PNG to IEND, a WebP to the size its RIFF header gives, every entry of a
-TIFF's first IFD, the top-level boxes of an ISOBMFF file filling it exactly. Measured
+its image data, a PNG to IEND, a GIF to its trailer, a WebP or an AVI to the size its RIFF
+header gives (and an AVI's AVIX chunks after it), every entry of a TIFF's first IFD, the
+top-level boxes of an ISOBMFF file filling it exactly. Measured
 2026-10-11 with a signed synthetic JPEG and one stray byte between two segments: Pillow and
 OpenCV opened it, c2pa-rs read its manifest (generative AI declared), and a walk that
 stopped at the byte had recorded "No Content Credentials". A walk cut short now leaves the
 file to the reader, or not_checked without one.
+
+**GIF and AVI are walked as c2pa-rs reads them.** Until 2026-10-19 both went to the reader
+to hear there was no store: a pass over 100 plain GIFs took 652 ms and one reader process,
+and walked takes 21 ms and none (100 MJPEG AVIs: 737 ms, 10 ms; median of five passes,
+Python 3.12, Windows). The walk follows c2pa-rs 0.91.0's `gif_io` and `riff_io` (read at
+e7cc666c), checked against signed files. A GIF's store is an Application Extension
+`C2PA_GIF`, auth code 01 00 00, which c2pa-rs looks for only before the first image; an
+AVI's is a top-level `C2PA` chunk, read only in the first RIFF, not in an AVIX. The walk
+records either wherever it sees it, so the reader decides. c2pa-rs walks some GIF blocks
+other than GIF89a lays them out (a Plain Text Extension, a Graphic Control Extension not of
+4 bytes, an extension label GIF89a does not define, an Application Extension not of 11
+bytes) and stops on them with "asset could not be parsed", the store past them unread; the
+walk stops there too. c2pa-rs writes a GIF's XMP as sub-blocks, so a length byte can fall
+inside a remote manifest's address: searched as the bytes lay, a 300-character address
+was found with the byte in it. The walk searches what the sub-blocks carry, and a packet
+written raw, as the XMP specification writes it, as it lies; the spec's magic trailer
+tells the two apart. A GIF is the one container walked to its end frame by frame: a
+16.7 MB GIF of 40 frames walks in 10 ms, against 18 ms stepping through each sub-block.
 
 **An ingredient's state is the reader's, not its signing tool's.** An ingredient carries
 the validation the tool that signed the parent recorded, against that tool's trust lists,
