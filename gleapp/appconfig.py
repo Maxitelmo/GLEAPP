@@ -103,6 +103,22 @@ def set_agency_logo(data_uri: str | None) -> None:
     save(cfg)
 
 
+def get_language() -> str | None:
+    """The interface language the examiner chose (``"en"``, ``"es"``), or None to
+    follow the language the system asks for (see ``gleapp.i18n.resolve``)."""
+    v = load().get("language")
+    return v if isinstance(v, str) and v else None
+
+
+def set_language(code: str | None) -> None:
+    cfg = load()
+    if code:
+        cfg["language"] = code
+    else:
+        cfg.pop("language", None)
+    save(cfg)
+
+
 def get_show_intro() -> bool:
     """Whether the intro video opens with the launcher. On until the examiner ticks
     "Don't show this at startup" in it."""

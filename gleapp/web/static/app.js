@@ -153,8 +153,8 @@ function matchedInText(f) {
   return hashSources(f).map(s => {
     const bits = [];
     if (s.src !== "stash" && s.name) bits.push(s.name);
-    if (hasCat(s.category)) bits.push(`category ${s.category}`);
-    return (SRC_LABEL[s.src] || "Hash set") + (bits.length ? ` (${bits.join(", ")})` : "");
+    if (hasCat(s.category)) bits.push(i18n.t("category {n}", { n: s.category }));
+    return i18n.t(SRC_LABEL[s.src] || "Hash set") + (bits.length ? ` (${bits.join(", ")})` : "");
   }).join("; ");
 }
 
@@ -207,7 +207,13 @@ const keyCat = k => {
   const c = customCats()[k - UNCAT - 1];
   return c ? c.code : null;
 };
-const catName = c => (catByCode(c) || {}).name || (hasCat(c) ? "Category " + c : "Uncategorized");
+// Category 5 is the absence of one, so its name is GLEAPP's word and is translated; the
+// other names are the examiner's or Project VIC's and are shown as stored
+const catName = c => {
+  const name = (catByCode(c) || {}).name;
+  if (!hasCat(c)) return i18n.t(+c === UNCAT && name ? name : "Uncategorized");
+  return name || i18n.t("Category {n}", { n: c });
+};
 const catColor = c => (catByCode(c) || {}).color || (hasCat(c) ? "#888" : "#3a3f4b");
 
 async function refreshCats() {
@@ -425,12 +431,14 @@ function showSimilarResult(id, d) {
   renderPager();
   $("#simBanner").style.display = "flex";
   const idx = state.simIndexing;
-  $("#simId").textContent = `#${id}: ${d.copies} ${d.copies === 1 ? "match" : "matches"}`
-    + (d.quick ? `, ${d.quick} unconfirmed` : "")
-    + (d.content_on ? `, ${d.content} similar` : "")
-    + (d.engine === "hash" ? " (not indexed: see Find similar in the left pane)"
-       : idx ? " (still indexing)" : "");
-  if (d.more) $("#simId").textContent += " (checking key frames…)";
+  // built from parts the catalog holds one by one (i18n.js), since the parts combine
+  $("#simId").textContent = i18n.t(d.copies === 1 ? "#{id}: {n} match" : "#{id}: {n} matches",
+                                   { id, n: d.copies })
+    + (d.quick ? i18n.t(", {n} unconfirmed", { n: d.quick }) : "")
+    + (d.content_on ? i18n.t(", {n} similar", { n: d.content }) : "")
+    + (d.engine === "hash" ? i18n.t(" (not indexed: see Find similar in the left pane)")
+       : idx ? i18n.t(" (still indexing)") : "")
+    + (d.more ? i18n.t(" (checking key frames…)") : "");
   $("#simCtl").style.display = d.content_on ? "inline-flex" : "none";
   updateStat();
 }
@@ -504,7 +512,7 @@ function tileEl(f) {
   }
   const stack = stackBits.length ? `<div class="stacks">${stackBits.join("")}</div>` : "";
   const catbar = hasCat(f.category)
-    ? `<div class="catbar" style="background:${catColor(f.category)}">${esc(catName(f.category))}</div>`
+    ? `<div class="catbar" translate="no" style="background:${catColor(f.category)}">${esc(catName(f.category))}</div>`
     : `<div class="catbar none">Uncategorized</div>`;
   const media = f.thumb
     ? `<img loading="lazy" src="/thumb/${f.thumb}" alt=""
@@ -522,7 +530,7 @@ function tileEl(f) {
       ${stack}
       <span class="selcheck">✓</span>
     </div>
-    <div class="fname">${esc(nm)}</div>
+    <div class="fname" translate="no">${esc(nm)}</div>
     ${catbar}`;
   if (f.kind === "video" && f.has_keyframes) enableScrub(el, f);
   return el;
@@ -652,9 +660,10 @@ const LIST_DEFS = [
     options: () => state.sources.map(s => ({ value: s, label: s })) },
   // How the row was recovered. Only an acquisition has more than one answer, so
   // this is off by default and turned on from the column picker.
-  { key: "origin", label: "How recovered", type: "enum", get: f => ORIGIN_SHORT[f.origin] || "",
+  { key: "origin", label: "How recovered", type: "enum",
+    get: f => ORIGIN_SHORT[f.origin] ? i18n.t(ORIGIN_SHORT[f.origin]) : "",
     options: () => Object.entries(ORIGIN_SHORT).map(([value, label]) => ({ value, label })) },
-  { key: "kind", label: "Type", type: "enum", get: f => f.kind || "",
+  { key: "kind", label: "Type", type: "enum", get: f => f.kind ? i18n.t(f.kind) : "",
     options: [{ value: "image", label: "image" }, { value: "video", label: "video" },
               { value: "other", label: "other" }] },
   { key: "ext", label: "Ext", type: "text", get: f => f.ext || "" },
@@ -919,7 +928,7 @@ function renderList(files) {
     }).join("");
     const filt = defs.map(lvFilterCell).join("");
     tbl.innerHTML = `<colgroup>${cols}</colgroup><thead>` +
-      `<tr class="lvhead">${head}</tr><tr class="lvfilt">${filt}</tr></thead><tbody></tbody>`;
+      `<tr class="lvhead">${head}</tr><tr class="lvfilt">${filt}</tr></thead><tbody translate="no"></tbody>`;
     g.appendChild(tbl);
     g.dataset.lvsig = sig;
     wireListHeader();
@@ -1387,13 +1396,14 @@ async function categorize(ids, cat) {
   ids.forEach(id => { const f = state.files.find(x => x.id === id); if (f) f.category = cat; });
   refreshTiles(ids);
   const n = (r && r.count) || ids.length;
-  const msg = `${catName(cat)} → ${n} file(s)`
-    + (n > ids.length ? ` (${ids.length} tile${ids.length === 1 ? "" : "s"} with their copies)` : "");
+  const msg = i18n.t("{cat} → {n} file(s)", { cat: catName(cat), n })
+    + (n > ids.length ? i18n.t(" ({k} tile{s} with their copies)",
+                               { k: ids.length, s: ids.length === 1 ? "" : "s" }) : "");
   // move the cursor on to the next file under whatever filter is active
   // (the categorized tiles stay put until you hit Refresh) - not just when
   // working the Uncategorized backlog specifically
   let note = "";
-  if (cat !== UNCAT) note = advancePast(ids, cat) || "";
+  if (cat !== UNCAT) note = i18n.t(advancePast(ids, cat) || "");
   else if (state.metaOpen && ids.includes(state.focus)) showMeta(state.focus);
   toast(msg + note, note ? 3500 : undefined);
 }
@@ -1505,6 +1515,11 @@ window.addEventListener("pagehide", () => {
   } catch (e) {}
 });
 let _filmFaceLayerCleanups = [];
+// The details rows whose values GLEAPP writes itself ("none", "3 files", a type); every
+// other row's value is the file's own (a name, a path, a time, a camera) and is never
+// translated (i18n.js).
+const META_WORDS = new Set(["Type", "Items extracted", "App cache", "Exact copies",
+  "Visually similar", "Matched in", "Error"]);
 async function showMeta(id) {
   if (pendingNoteFlush) { try { await pendingNoteFlush(); } catch (e) {} pendingNoteFlush = null; }
   _filmFaceLayerCleanups.forEach(fn => fn());
@@ -1574,7 +1589,7 @@ async function showMeta(id) {
   // them on an imported offline basemap; Copy puts them on the clipboard.
   const gps = f.gps_lat != null
     ? `<tr><td>GPS</td><td>${f.gps_lat}, ${f.gps_lon}
-       <button class="btn sm" id="mGpsCopy" title="Copy the coordinates">Copy</button></td></tr>` : "";
+       <button class="btn sm" id="mGpsCopy" title="Copy the coordinates">${i18n.t("Copy", {}, "verb")}</button></td></tr>` : "";
 
   const preview = f.thumb
     ? `<img src="/thumb/${f.thumb}" alt=""
@@ -1591,15 +1606,15 @@ async function showMeta(id) {
       <button class="btn sm mapexp" id="mMapFull" title="Open this map full size">⤢ Full size</button>
     </div>` : ""}
     <div class="body">
-      <h2>${esc(nm || "file #" + f.id)}</h2>
-      <div class="path">${esc(dispPath)}</div>
+      <h2 translate="no">${esc(nm || "file #" + f.id)}</h2>
+      <div class="path" translate="no">${esc(dispPath)}</div>
       ${f.error ? `<div class="path" style="color:var(--danger)">⚠ ${esc(f.error)}</div>` : ""}
 
       <div>Category:
-        <span class="catnow" style="background:${catColor(f.category)}">
+        <span class="catnow" translate="no" style="background:${catColor(f.category)}">
           ${esc(catName(f.category))}</span></div>
       <div style="margin-top:6px">${(f.flags || []).map(fl =>
-        `<span class="flagchip"><span class="dot" style="background:${esc(fl.color)}"></span>${esc(fl.name)} <b data-fc="${fl.code}">×</b></span>`).join("")}
+        `<span class="flagchip" translate="no"><span class="dot" style="background:${esc(fl.color)}"></span>${esc(fl.name)} <b data-fc="${fl.code}">×</b></span>`).join("")}
         <button class="btn sm" id="mFlag">+ flag</button></div>
       <div class="row">
         <button class="btn sm" id="mSim">Find similar</button>
@@ -1615,14 +1630,15 @@ async function showMeta(id) {
           `<img src="${k.thumb}" title="${fmtDur(k.ts)}" data-ts="${k.ts}" data-kf="${k.id}">`).join("")}</div>` : ""}
 
       <table>
-        ${rows.map(r => `<tr><td>${r[0]}</td><td style="white-space:pre-line">${
+        ${rows.map(r => `<tr><td>${r[0]}</td><td style="white-space:pre-line"${
+          META_WORDS.has(r[0]) ? "" : ' translate="no"'}>${
           r[0] === "File path" ? pathHtml(f, String(r[1])) : esc(r[1])}</td></tr>`).join("")}
         ${gps}
-        ${hashes.map(r => `<tr><td>${r[0]}</td><td class="mono">${esc(r[1])}</td></tr>`).join("")}
+        ${hashes.map(r => `<tr><td>${r[0]}</td><td class="mono" translate="no">${esc(r[1])}</td></tr>`).join("")}
       </table>
       ${vic.exif.length ? `<details style="margin-top:8px"><summary class="muted"
           title="The Exif reading the Project VIC record carries for the file it describes. It is shown as recorded and is not this file's own metadata; a location in it is not drawn on any map.">VIC Exif, as recorded (${vic.exif.length})</summary>
-        <table>${vic.exif.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v ?? "")}</td></tr>`).join("")}</table>
+        <table translate="no">${vic.exif.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v ?? "")}</td></tr>`).join("")}</table>
       </details>` : ""}
 
       <div class="muted" style="margin-top:8px">Notes <span id="mNoteState" class="muted" style="font-size:11px"></span></div>
@@ -1907,7 +1923,7 @@ function renderHex(d) {
     }).join("");
     rows.push(`${off}  ${hex}  |${asc}|`);
   }
-  $("#hexBody").textContent = rows.join("\n") || "(empty file)";
+  $("#hexBody").textContent = rows.join("\n") || i18n.t("(empty file)");
   $("#hexBody").scrollTop = 0;
 }
 function hexStep(delta) {
@@ -2461,7 +2477,7 @@ async function openHelp() {
   dlg.style.display = "block";
   if (!helpLoaded) {
     try {
-      $("#helpDoc").innerHTML = await fetch("/static/help.html").then(r => r.text());
+      $("#helpDoc").innerHTML = await fetch(i18n.help).then(r => r.text());
       helpLoaded = true;
     } catch (e) {
       $("#helpDoc").innerHTML = "<p>Could not load the manual.</p>";
@@ -2583,7 +2599,7 @@ async function refreshContext() {
   updateKnownHash(c.known_hash);
   const src = $("#fsrc"), have = new Set([...src.options].map(o => o.value));
   (c.sources || []).forEach(s => {
-    if (!have.has(s)) src.insertAdjacentHTML("beforeend", `<option>${esc(s)}</option>`);
+    if (!have.has(s)) src.insertAdjacentHTML("beforeend", `<option translate="no">${esc(s)}</option>`);
   });
   if (c.errors > 0) $("#errCount").textContent = `(${c.errors.toLocaleString()})`;
   // An online-only cloud placeholder's row carries a note, not a failure: the
@@ -2658,8 +2674,8 @@ function vicFlagsText(fl) {
   if (!fl || typeof fl !== "object") return "";
   const present = Object.keys(VIC_FLAG_LABELS).filter(k => vicBool(fl[k]) !== null);
   if (!present.length) return "";
-  const on = present.filter(k => vicBool(fl[k])).map(k => VIC_FLAG_LABELS[k]);
-  return on.length ? on.join(", ") : "none set";
+  const on = present.filter(k => vicBool(fl[k])).map(k => i18n.t(VIC_FLAG_LABELS[k]));
+  return on.length ? on.join(", ") : i18n.t("none set");
 }
 function vicTagsText(t) {
   if (t == null || t === "") return "";
@@ -2973,13 +2989,13 @@ $("#btnDocs").onclick = async () => {
 function updateContainerCounts(c) {
   const box = $("#docsCounts");
   if (!box || !c) return;
-  const count = (n, one, many) => `${(n || 0).toLocaleString()} ${n === 1 ? one : many}`;
-  box.textContent = `${count(c.documents, "document", "documents")}`
-    + ` · ${count(c.document_items, "file pulled out", "files pulled out")}`;
+  const count = (n, one, many) => i18n.t(n === 1 ? one : many, { n: (n || 0).toLocaleString() });
+  box.textContent = `${count(c.documents, "{n} document", "{n} documents")}`
+    + ` · ${count(c.document_items, "{n} file pulled out", "{n} files pulled out")}`;
   const ab = $("#archCounts");
   if (ab) {
-    ab.textContent = `${count(c.archives, "archive", "archives")}`
-      + ` · ${count(c.archive_items, "file pulled out", "files pulled out")}`;
+    ab.textContent = `${count(c.archives, "{n} archive", "{n} archives")}`
+      + ` · ${count(c.archive_items, "{n} file pulled out", "{n} files pulled out")}`;
   }
 }
 
@@ -3682,18 +3698,19 @@ function _histDetail(e) {
   try { d = e.detail ? JSON.parse(e.detail) : null; } catch (_e) { d = _parsePyRepr(e.detail); }
   if (e.action === "process" && d) {
     const scopeLabel = PROCESS_SCOPE_LABELS[d.scope] || null;
+    const n = (key, v) => i18n.t(key, { n: v });
     const bits = [
-      `${d.discovered ?? "?"} files`,
-      `${d.processed ?? 0} processed`,
-      d.skipped ? `${d.skipped} skipped` : null,
-      `${d.errors ?? 0} errored`,
-      d.hashset_hits ? `${d.hashset_hits} known-hash hits` : null,
-      d.redundant_duplicates ? `${d.redundant_duplicates} exact dups` : null,
-      d.visual_stacks ? `${d.visual_stacks} visual stacks` : null,
-      d.clusters ? `${d.clusters} clusters` : null,
-      d.screened === false ? "screening skipped" : null,
+      n("{n} files", d.discovered ?? "?"),
+      n("{n} processed", d.processed ?? 0),
+      d.skipped ? n("{n} skipped", d.skipped) : null,
+      n("{n} errored", d.errors ?? 0),
+      d.hashset_hits ? n("{n} known-hash hits", d.hashset_hits) : null,
+      d.redundant_duplicates ? n("{n} exact dups", d.redundant_duplicates) : null,
+      d.visual_stacks ? n("{n} visual stacks", d.visual_stacks) : null,
+      d.clusters ? n("{n} clusters", d.clusters) : null,
+      d.screened === false ? i18n.t("screening skipped") : null,
     ].filter(Boolean);
-    let html = `<div class="hdetail">${scopeLabel ? `<b>${esc(scopeLabel)}</b> — ` : ""}${esc(bits.join(" · "))}</div>`;
+    let html = `<div class="hdetail">${scopeLabel ? `<b>${esc(i18n.t(scopeLabel))}</b> — ` : ""}${esc(bits.join(" · "))}</div>`;
     const stages = d.stages || {};
     const keys = Object.keys(stages);
     if (keys.length) {
@@ -3747,17 +3764,18 @@ function _histDetail(e) {
     return `<div class="hdetail">${esc("New order: " + (d.order || []).join(" → "))}</div>`;
   }
   if (e.action === "ingest" && d) {
-    const srcs = (d.sources || []).map(s => `${s.name} (${s.kind})`).join(", ");
-    return `<div class="hdetail">${esc(`${d.count ?? "?"} file(s) from `
-      + `${(d.sources || []).length} source(s)` + (srcs ? " — " + srcs : ""))}</div>`;
+    const srcs = (d.sources || []).map(s => `${s.name} (${i18n.t(s.kind)})`).join(", ");
+    return `<div class="hdetail">${esc(i18n.t("{n} file(s) from {k} source(s)",
+      { n: d.count ?? "?", k: (d.sources || []).length }) + (srcs ? " — " + srcs : ""))}</div>`;
   }
   if (e.action === "redup" && d) {
+    const n = (key, v) => i18n.t(key, { n: v });
     const bits = [
-      d.redundant_duplicates ? `${d.redundant_duplicates} exact dups` : null,
-      d.visual_stacks ? `${d.visual_stacks} visual stacks` : null,
-      d.clusters ? `${d.clusters} clusters` : null,
+      d.redundant_duplicates ? n("{n} exact dups", d.redundant_duplicates) : null,
+      d.visual_stacks ? n("{n} visual stacks", d.visual_stacks) : null,
+      d.clusters ? n("{n} clusters", d.clusters) : null,
     ].filter(Boolean);
-    return `<div class="hdetail">${esc(bits.length ? bits.join(" · ") : "No duplicates found")}</div>`;
+    return `<div class="hdetail">${esc(bits.length ? bits.join(" · ") : i18n.t("No duplicates found"))}</div>`;
   }
   if (e.action === "hashset_import" && d) {
     const bits = [`${d.added ?? 0} entries`, d.source ? `from ${d.source}` : null,
@@ -4080,9 +4098,9 @@ makePaneResizable("#meta", "#metaRz", { min: 260, max: 700, side: "left", storag
 const Lr = { native: false, sources: [], recent: [], recentExpanded: false, logo: null };
 function fmtAgo(ts) {
   const s = (Date.now() / 1000) - ts;
-  if (s < 3600) return Math.round(s / 60) + "m ago";
-  if (s < 86400) return Math.round(s / 3600) + "h ago";
-  return Math.round(s / 86400) + "d ago";
+  if (s < 3600) return i18n.t("{n}m ago", { n: Math.round(s / 60) });
+  if (s < 86400) return i18n.t("{n}h ago", { n: Math.round(s / 3600) });
+  return i18n.t("{n}d ago", { n: Math.round(s / 86400) });
 }
 /* GLEAPP's own confirm and prompt. The browser's built-in ones title themselves with
    the page's local address ("127.0.0.1:61319 says"), which means nothing to an examiner,
@@ -4412,7 +4430,7 @@ function renderRecent() {
   const rc = Lr.recentExpanded ? Lr.recent : Lr.recent.slice(0, RECENT_SHOWN);
   $("#recentList").innerHTML = rc.map(r => {
     const n = (typeof r.files === "number")
-      ? r.files.toLocaleString() + (r.files === 1 ? " file" : " files") : "";
+      ? i18n.t(r.files === 1 ? "{n} file" : "{n} files", { n: r.files.toLocaleString() }) : "";
     const bits = [esc(r.path), n, fmtAgo(r.opened)].filter(Boolean).join(" · ");
     return `<button data-path="${esc(r.path)}">${esc(r.name)}<small>${bits}</small></button>`;
   }).join("");
@@ -4970,7 +4988,7 @@ function showSourceStatus(list) {
         : s.locked_by === "private key"
           ? "is an encrypted disk image sealed to a certificate, and its private key has not been given this session"
           : "is an encrypted disk image and its password has not been given this session";
-      return `<div style="margin:2px 0"><b>${esc(s.name)}</b> ${what}. ${note}
+      return `<div style="margin:2px 0"><b>${esc(s.name)}</b> ${i18n.t(what)}. ${i18n.t(note)}
         <button data-unlock="${esc(s.name)}" data-by="${esc(s.locked_by || "password")}"
           style="margin-left:8px">Unlock…</button></div>`;
     }
@@ -4983,9 +5001,9 @@ function showSourceStatus(list) {
       return `<div style="margin:2px 0"><b>${esc(s.name)}</b> is read from ${s.members.length}`
         + ` member image${s.members.length === 1 ? "" : "s"}, and ${bad.length} of them ${bad.length === 1 ? "is" : "are"} not as the`
         + ` case recorded: ` + bad.map(m => `<code>${esc(m.path)}</code> (${esc(m.status)})`).join(", ")
-        + `. ${note} <button data-relink="${esc(s.name)}" data-set="1" style="margin-left:8px">Relink…</button></div>`;
+        + `. ${i18n.t(note)} <button data-relink="${esc(s.name)}" data-set="1" style="margin-left:8px">Relink…</button></div>`;
     }
-    return `<div style="margin:2px 0"><b>${esc(s.name)}</b> ${what} <code>${esc(s.path)}</code>. ${note}
+    return `<div style="margin:2px 0"><b>${esc(s.name)}</b> ${what} <code>${esc(s.path)}</code>. ${i18n.t(note)}
       <button data-relink="${esc(s.name)}" style="margin-left:8px">Relink…</button></div>`;
   }).join("");
   el.querySelectorAll("[data-unlock]").forEach(b => b.onclick = async () => {
@@ -5172,9 +5190,11 @@ async function openMapView() {
     properties: { id: x.id, thumb: x.thumb || "", name: x.orig_name || x.rel_path || "" } }));
   // The points open a thumbnail and a Details button, and the only cue on the map
   // itself was the cursor changing over one, so the header says so.
-  $("#mapViewInfo").textContent = `${feats.length.toLocaleString()} geolocated file(s) in the current filter`
-    + (d.total > feats.length ? ` (showing the first ${feats.length.toLocaleString()} of ${d.total.toLocaleString()})` : "")
-    + (feats.length ? " · click a point for its thumbnail and details" : "");
+  $("#mapViewInfo").textContent = i18n.t("{n} geolocated file(s) in the current filter",
+                                          { n: feats.length.toLocaleString() })
+    + (d.total > feats.length ? i18n.t(" (showing the first {n} of {total})",
+        { n: feats.length.toLocaleString(), total: d.total.toLocaleString() }) : "")
+    + (feats.length ? i18n.t(" · click a point for its thumbnail and details") : "");
   $("#mapsDlg").style.display = "none";
   $("#mapView").style.display = "block";
   if (viewMap) { viewMap.remove(); viewMap = null; }
@@ -5259,6 +5279,8 @@ $("#mapViewClose").onclick = closeMapView;
 
 /* ---------- boot ---------- */
 (async function boot() {
+  i18n.picker($("#langSel"));
+  i18n.picker($("#langSelLauncher"));
   let c;
   try { c = await api("/api/context"); }
   catch (e) { c = {}; }
@@ -5296,7 +5318,8 @@ $("#mapViewClose").onclick = closeMapView;
     setupTz(c);
     try { await refreshCats(); } catch (e) {}
     try { await refreshFlags(); } catch (e) {}
-    (c.sources || []).forEach(s => $("#fsrc").insertAdjacentHTML("beforeend", `<option>${esc(s)}</option>`));
+    (c.sources || []).forEach(s => $("#fsrc").insertAdjacentHTML("beforeend",
+      `<option translate="no">${esc(s)}</option>`));
     try {
       if (localStorage.getItem("gleapp.meta") === "1") toggleMeta(true);
       const ps = localStorage.getItem("gleapp.pagesize");

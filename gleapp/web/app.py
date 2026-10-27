@@ -28,7 +28,7 @@ from flask import Flask, abort, jsonify, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 from .. import (appconfig, archive, backup, basemaps, categories, docmedia, exocache, flags,
-               lava, relink, report, savedset)
+               i18n, lava, relink, report, savedset)
 from ..case import image_set_source, open_case, parse_source_spec
 from ..db import FILE_PATH_SQL, ORIGINS, TOOL_ACTOR
 from ..facematch import find_matching_faces
@@ -426,6 +426,18 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
     @app.get("/")
     def index():
         return send_from_directory(app.template_folder, "index.html")
+
+    @app.get("/i18n.js")
+    def i18n_config():
+        """The interface language and its catalog, as a script the page loads before
+        app.js, so the first thing drawn is already in that language."""
+        setting = appconfig.get_language()
+        code = i18n.resolve(setting, request.accept_languages.values())
+        body = "window.GLEAPP_I18N = " + json.dumps(
+            i18n.client_config(code, setting), ensure_ascii=False) + ";\n"
+        resp = app.response_class(body, mimetype="application/javascript")
+        resp.headers["Cache-Control"] = "no-store"   # a change of language shows on reload
+        return resp
 
     @app.get("/notices")
     def notices():
@@ -2526,6 +2538,13 @@ def create_app(case_dir: str | None = None, *, native: bool = False) -> Flask:
                 abort(400, description="show_intro must be true or false")
             appconfig.set_show_intro(show)
             return jsonify({"ok": True, "show_intro": show})
+        if "language" in body:
+            # app-wide: the interface language, or "auto" to follow the system's
+            code = str(body.get("language") or "auto").strip().lower()
+            if code != "auto" and code not in i18n.languages():
+                abort(400, description=f"unknown language: {code}")
+            appconfig.set_language(None if code == "auto" else code)
+            return jsonify({"ok": True, "language": code})
         if "use_stash" in body:
             # per-case: skip the examiner's hash stash for a case that isn't
             # CSAM/Project VIC related, where a stashed hit would be noise

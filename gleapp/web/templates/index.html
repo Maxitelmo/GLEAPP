@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GLEAPP Review</title>
 <link rel="icon" type="image/png" href="/static/favicon.png">
+<!-- the interface language: loaded first so the page is translated as it is drawn -->
+<script src="/i18n.js"></script>
+<script src="/static/i18n.js"></script>
 <style>
   :root{
     --bg:#14161a; --panel:#1c1f26; --panel2:#242833; --line:#333a46;
@@ -246,6 +249,7 @@
   .btn:disabled{opacity:.4;cursor:default}
   .btn:disabled:hover{border-color:var(--line)}
   .btn.sm{padding:3px 8px;font-size:12px}
+  select.langsel{background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 6px;font:inherit;cursor:pointer}
   .btn.danger{border-color:var(--danger)}
   .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:1px 8px;margin:2px 2px 0 0;font-size:11px}
   .pill b{cursor:pointer;color:var(--danger)}
@@ -543,7 +547,7 @@
 <header>
   <div class="hdr-case">
     <img class="brand-logo" src="/static/gleapp-logo.png" alt="">
-    <h1 id="caseName">GLEAPP</h1>
+    <h1 id="caseName" translate="no">GLEAPP</h1>
     <span class="stat" id="statLine"></span>
     <span id="saveState" title="">All changes saved</span>
   </div>
@@ -573,6 +577,7 @@
     <button class="btn" id="btnRefresh" title="Re-run the current filter — files that no longer match (e.g. ones you just categorized) drop out of view">↻ Refresh</button>
     <button class="btn" id="btnMeta">Details pane</button>
     <button class="btn" id="btnReport">Export report</button>
+    <select class="langsel" id="langSel" title="Interface language"></select>
     <button class="btn" id="btnNotify" title="Recent report exports">🔔<span class="dot" id="notifyDot" hidden></span></button>
     <div id="notifyMenu" class="hdrmenu"></div>
   </div>
@@ -795,6 +800,7 @@
       <button id="btnLogoLauncher" title="The default logo on every case's report header, unless that case sets its own">Agency logo</button>
       <button id="btnIntroLauncher" title="Play the intro video that opens with GLEAPP, and choose whether it shows at startup">Watch intro</button>
     </div>
+    <select class="langsel" id="langSelLauncher" title="Interface language"></select>
     <button class="btn" id="btnHelpLauncher" title="Manual — features, filters, categories, shortcuts">Help / Manual</button>
   </div>
   <div class="muted">Graphics · Logs · Examination · Automated Processing · Parsing</div>
@@ -981,7 +987,7 @@
     <button class="btn sm" id="helpPdf" title="Opens your browser/OS print dialog - choose &quot;Save as PDF&quot; as the destination">Download as PDF</button>
     <button class="btn sm" id="helpClose">Close</button>
   </header>
-  <div id="helpDoc"><p class="muted">Loading…</p></div>
+  <div id="helpDoc" translate="no"><p class="muted">Loading…</p></div>
 </div></div>
 
 <div id="hashImportDlg"><div class="box">
