@@ -2478,6 +2478,18 @@ async function openHelp() {
   if (!helpLoaded) {
     try {
       $("#helpDoc").innerHTML = await fetch(i18n.help).then(r => r.text());
+      // a translated manual made from an older English one says so, with the way to
+      // the English manual, which is the reference
+      if (i18n.helpStale) {
+        $("#helpDoc").insertAdjacentHTML("afterbegin", `<p class="helpstale">${
+          esc(i18n.t("This translation was made from an earlier version of the manual. The English manual is the reference:"))}
+          <a href="#" id="helpEnglish">${esc(i18n.t("open the English manual"))}</a></p>`);
+        $("#helpEnglish").onclick = async e => {
+          e.preventDefault();
+          $("#helpDoc").innerHTML = await fetch("/static/help.html").then(r => r.text());
+          $("#helpDoc").scrollTop = 0;
+        };
+      }
       helpLoaded = true;
     } catch (e) {
       $("#helpDoc").innerHTML = "<p>Could not load the manual.</p>";

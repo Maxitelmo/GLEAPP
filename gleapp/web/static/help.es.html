@@ -1,0 +1,2079 @@
+<!-- Spanish translation of help.html. translated-from-sha256: 24f5a5b2a2494e3b995179bfcedf437636fbfcec1723da60b53fa91c51a0c486
+     The English manual is the reference. gleapp/i18n.py compares this hash with the
+     current help.html and the page says so when the translation is older. -->
+<p><img src="/static/gleapp-logo.png" alt="Logo de GLEAPP" width="96" height="96"></p>
+
+<p><strong>GLEAPP</strong>: Graphics · Logs · Examination · Automated Processing · Parsing
+(Gráficos · Registros · Examen · Procesamiento automatizado · Análisis).
+Una herramienta de triaje de imágenes y videos totalmente sin conexión para examinadores
+forenses digitales. Ingesta medios, los hashea y elimina duplicados, decodifica formatos
+que un navegador no puede mostrar, detecta rostros y tono de piel, compara con listas de
+hashes conocidos y le ofrece una galería de revisión rápida, manejada con el teclado, con
+un esquema de categorías de Project&nbsp;VIC bloqueado.</p>
+
+<p><strong>GLEAPP no incluye ninguna base de hashes de contenido ilegal y no realiza
+ninguna clasificación de contenido.</strong> La detección de rostros y la proporción de
+tono de piel son solo señales para la investigación. Toda decisión de categoría es del
+examinador.</p>
+
+<p class="muted"><em>Este manual es una traducción del manual en inglés, que es la versión
+de referencia. Los nombres de las categorías de Project&nbsp;VIC, los comandos, las rutas y
+los nombres de columnas de los informes se dejan en inglés, tal como aparecen en los
+archivos.</em></p>
+
+<div class="toc">
+  <a href="#start">1. Primeros pasos</a><br>
+  <a href="#case">2. El caso</a><br>
+  <a href="#gallery">3. La galería de revisión</a><br>
+  <a href="#tiles">4. Miniaturas e insignias</a><br>
+  <a href="#select">5. Seleccionar archivos</a><br>
+  <a href="#details">6. El panel de detalles</a><br>
+  <a href="#categories">7. Categorías (esquema VIC obligatorio)</a><br>
+  <a href="#filters">8. Filtros: todas las opciones</a><br>
+  <a href="#dupes">9. Duplicados y similitud</a><br>
+  <a href="#screening">10. Detección de rostros / piel</a><br>
+  <a href="#knownhash">11. Comparación con hashes conocidos y NSRL</a><br>
+  <a href="#stash">12. Reserva local de hashes</a><br>
+  <a href="#formats">13. Manejo de formatos</a><br>
+  <a href="#reports">14. Informes y exportaciones</a><br>
+  <a href="#save">15. Guardado automático e instantáneas</a><br>
+  <a href="#reprocess">16. Reprocesar y recuperar medios eliminados</a><br>
+  <a href="#keys">17. Atajos de teclado</a><br>
+  <a href="#privacy">18. Datos y privacidad</a><br>
+  <a href="#maps">19. Mapas (mapas base sin conexión)</a><br>
+  <a href="#credits">20. Créditos y agradecimientos</a>
+</div>
+
+<h2 id="start">1. Primeros pasos</h2>
+<p>Sin ningún caso abierto, GLEAPP muestra el <strong>lanzador</strong>.</p>
+<p>Al abrirse GLEAPP, se reproduce un breve video de introducción sobre el lanzador.
+Ciérrelo con <strong>Cerrar</strong>, <kbd>Esc</kbd> o un clic fuera de él; marque
+<strong>No mostrar esto al iniciar</strong> para que no vuelva a abrirse.
+<strong>Ver introducción</strong>, en el <strong>☰ Menú</strong> del lanzador (o en
+<em>Ayuda</em> dentro del <strong>☰ Menú</strong> de un caso), lo reproduce de nuevo y
+permite volver a activarlo. La elección se guarda en su configuración de usuario, no en
+ningún caso.</p>
+<p>El idioma de la interfaz se elige con el selector que está junto al menú, tanto en el
+lanzador como en un caso abierto: <strong>Idioma del sistema</strong> sigue el idioma del
+sistema operativo (o del navegador) si hay una traducción, y si no usa el inglés. La
+elección se guarda en su configuración de usuario. Solo cambia la interfaz: los nombres de
+archivo, las rutas, los metadatos, los nombres de categorías y marcas, y los informes y
+exportaciones quedan como están.</p>
+<ul>
+  <li><strong>Casos recientes</strong>: haga clic para volver a abrir uno. Solo se listan
+  los casos que contienen archivos, cada uno con su cantidad de archivos actual.</li>
+  <li><strong>Abrir un caso existente</strong>: indique una carpeta que contenga
+  <code>case.gleapp</code>, o el propio archivo.</li>
+  <li><strong>Caso nuevo</strong>: escriba un nombre, una carpeta (se crea si no existe)
+  y el nombre del examinador, y luego agregue uno o más orígenes en <em>Evidencia para
+  ingestar</em>, pegando una ruta y haciendo clic en <strong>Agregar</strong>, o con los
+  botones de búsqueda. Todos los orígenes se ingestan en un mismo caso.
+    <ul>
+      <li><strong>Buscar carpeta&hellip;</strong>: se recorre de forma recursiva en
+      busca de medios.</li>
+      <li><strong>Buscar archivo&hellip;</strong> acepta:
+        <ul>
+          <li><strong>Archivo de extracción</strong>: <code>.zip</code>, o
+          <code>.tar</code> sin comprimir o comprimido (<code>.gz</code>,
+          <code>.bz2</code>, <code>.xz</code>). Los medios se leen en su lugar salvo que
+          marque <em>Copiar los medios de la extracción/adquisición al caso</em>. Un tar
+          comprimido siempre se copia.</li>
+          <li><strong>Imagen de disco</strong>: un <code>.E01</code>, <code>.s01</code> o
+          <code>.Ex01</code> con sus segmentos al lado, un <code>.aff</code> (para una
+          carpeta AFD, cualquier <code>.aff</code> de ella), un <code>.afm</code> con sus
+          archivos en bruto, un <code>.aff4</code>, un <code>.dmg</code> de Apple (con
+          los archivos <code>.dmgpart</code> que tenga al lado), una carpeta
+          <code>.sparseimage</code> o <code>.sparsebundle</code>, un disco de máquina
+          virtual (<code>.vhd</code>, <code>.vhdx</code>, <code>.vmdk</code>,
+          <code>.qcow2</code>, con los archivos padre o de extensión que tenga al lado), o
+          una imagen en bruto (un <code>.img</code>/<code>.dd</code>, o cualquier segmento
+          de un conjunto dividido como <code>.001</code>, <code>.002</code>). Las imágenes
+          en bruto se identifican por su contenido, no por la extensión. Un conjunto
+          dividido al que le falta un segmento se rechaza, indicando el hueco.
+            <ul>
+              <li>Los sistemas de archivos se recorren archivo por archivo, así que cada
+              archivo conserva el nombre, la ruta y las fechas que registró el sistema de
+              archivos. Compatibles: ext2/3/4, F2FS, FAT32, FAT16, FAT12, exFAT, NTFS,
+              HFS+, HFSX, APFS, QNX4, QNX EFS, QNX ETFS, QNX IFS, SquashFS, JFFS2, UBI,
+              UBIFS, YAFFS1, YAFFS2, XFS (v4 y v5), Btrfs y ReFS 3.x hasta 3.14 (un ReFS
+              más antiguo o más nuevo se nombra y no se lista; los datos de ReFS en un
+              contenedor marcado como comprimido se rechazan; con los archivos de prueba de
+              qnxprobe, GLEAPP registró cada archivo de XFS y Btrfs con el SHA-256
+              registrado, y 2.540 de 2.547 archivos de ReFS con el SHA-256 que registró
+              Windows; los otros 7 son 4 archivos que el conjunto de prueba no incluye y 3
+              archivos de System Volume Information que el listado de Windows omite),
+              también dentro de los volúmenes lógicos lineales y en bandas de un volumen
+              físico LVM2. Los volúmenes ilegibles se nombran en el panel Origen.</li>
+              <li>La recuperación de medios eliminados es aparte (&sect;16). Marque
+              <em>Recuperar medios (registros del sistema de archivos y carving)</em> para
+              ejecutarla durante la ingesta, o ejecútela después desde el panel
+              Origen.</li>
+              <li>Una imagen de disco de Apple o un sparse bundle cifrados (AES-128 o
+              AES-256, como los escribe <code>hdiutil</code>), un AFF cifrado con frase de
+              contraseña, o un conjunto E01, SMART o en bruto que FTK Imager cifró con
+              AD encryption (indique su primer archivo, o cualquier archivo numerado de un
+              conjunto en bruto), se lee con su contraseña. Uno sellado con un certificado
+              se abre en cambio con la clave privada RSA de ese certificado: indique la
+              ruta del archivo de clave, sin cifrar, en PEM o DER. Un volumen BitLocker
+              dentro de una imagen se abre con su contraseña, su contraseña de
+              recuperación o su clave de inicio (archivo <code>.BEK</code>); un volumen
+              APFS que macOS cifró por software (un disco externo, o un Mac sin chip T2 ni
+              Apple silicon), con su contraseña o su clave de recuperación personal, y la
+              ventana muestra la pista de contraseña que guarda el volumen; y un
+              contenedor LUKS (cifrado de disco de Linux), con su frase de contraseña. Uno
+              que deje bloqueado no se recorre y se nombra en el panel Origen. Cuando hace
+              clic en <strong>Crear caso e ingestar</strong>, GLEAPP pide lo que falta, en
+              un campo de contraseña o de archivo de clave, y vuelve a pedirlo si no abre
+              la imagen. Lo que usted da se mantiene en memoria hasta que se cierra GLEAPP
+              y nunca se escribe en el caso, en su configuración, en un registro ni en un
+              informe. En una sesión posterior, el aviso de Origen muestra la imagen como
+              bloqueada con un botón <strong>Desbloquear&hellip;</strong>. Hasta que se
+              desbloquee, un caso que lee la imagen en su lugar conserva sus miniaturas,
+              hashes y categorías, y la vista a tamaño completo y la exportación esperan a
+              que se desbloquee.</li>
+            </ul>
+          </li>
+          <li><strong>JSON</strong>: una especificación de trabajo de GLEAPP o un JSON de
+          <strong>Project VIC 2.0 (EE.&nbsp;UU.)</strong>, detectado automáticamente. La
+          carpeta de medios de VIC se busca junto al archivo. Se importan MediaID,
+          categoría, ruta original, MIME y las marcas de víctima y agresor. Vea en
+          &sect;3 cómo se manejan las entradas duplicadas.</li>
+          <li><strong>Índice de C4All</strong>: un <code>C4P Index.xml</code> (imágenes) o
+          <code>C4M Index.xml</code> (películas) de C4All, detectado automáticamente. El
+          archivo de cada entrada se abre en su lugar desde las carpetas que están junto
+          al índice (<code>DVD01(...)</code>, etc.), con su MD5, SHA-1, tamaño, horas y
+          ruta original; una categoría distinta de 0 se conserva con el mismo código.
+          Elija ambos índices juntos para agregar los dos. Las entradas cuyo archivo no
+          está se registran con <em>file not found on disk</em>.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+<p><strong>Opciones de ingesta</strong> (en <strong>Opciones de procesamiento</strong>,
+contraídas hasta que haga clic):</p>
+<ul>
+  <li><em>Preprocesamiento de rostros / tono de piel</em>: activado por defecto; también
+  puede ejecutarse después.</li>
+  <li><em>Fotogramas clave de vista previa de video</em>: 6 por defecto.</li>
+  <li><em>Copiar los medios de la extracción/adquisición al caso</em>: desactivado, el
+  caso queda pequeño pero el archivo debe quedarse en su lugar. Activado, el caso es
+  autónomo.</li>
+  <li><em>Expandir los archivos comprimidos encontrados en los orígenes</em>: desactivado
+  por defecto. Abre cada <code>.zip</code>, <code>.7z</code>, <code>.tar</code> o
+  <code>.gz</code> encontrado dentro de un origen y registra sus imágenes y videos.
+  Déjelo desactivado para una extracción completa del sistema de archivos que contiene
+  muchos archivos comprimidos, y ábralos después con <strong>Expandir archivos
+  comprimidos</strong> en la barra lateral (&sect;16). El diálogo
+  <strong>+&nbsp;Agregar evidencia</strong> tiene la misma casilla.</li>
+  <li><em>Extraer medios de documentos (PDF, HTML, MHTML, archivo web)</em>: desactivado
+  por defecto. Abre cada PDF, página web, MHTML y archivo web de Safari de los orígenes y
+  registra las imágenes y videos que contienen (&sect;13). Desactivado, esos documentos no
+  se conservan. Ejecútelo después con <strong>Extraer medios de documentos</strong> en la
+  barra lateral (&sect;16). El diálogo <strong>+&nbsp;Agregar evidencia</strong> tiene la
+  misma casilla.</li>
+  <li><em>Recuperar medios</em>: solo imágenes de disco, desactivado por defecto
+  (&sect;16).</li>
+  <li><em>Activar la comparación con la reserva de hashes</em>: activado por defecto.
+  Desactívelo en un caso que no esté relacionado con CSAM / Project VIC, para que una
+  coincidencia antigua de la reserva no vuelva a marcar medios no relacionados. Puede
+  cambiarlo después desde la sección <em>Hashes conocidos</em> (&sect;12).</li>
+  <li><em>Empezar con mis categorías guardadas</em> / <em>Empezar con mis marcas
+  guardadas</em>: aparecen solo después de guardar alguna con <strong>Guardar como mi
+  conjunto…</strong> (&sect;7). Cada una agrega esa parte de su conjunto guardado al caso
+  nuevo. Ambas empiezan sin marcar; usted elige cada vez.</li>
+</ul>
+<p>Haga clic en <strong>Crear caso e ingestar</strong>.</p>
+<p>La galería se abre en cuanto se registran los archivos, y una barra de progreso en la
+parte inferior muestra la cantidad y la etapa. Las miniaturas se completan a medida que se
+procesan los archivos, y mientras tanto puede revisar, categorizar y marcar los archivos ya
+terminados. El apilado de duplicados, la comparación con hashes conocidos y el agrupamiento
+se ejecutan al final, así que esos filtros se estabilizan justo después de la última
+miniatura. La barra desaparece cuando termina el procesamiento, y hasta entonces no se
+puede cerrar el caso.</p>
+
+<h2 id="case">2. El caso</h2>
+<p>Un caso es una carpeta. Dentro de ella:</p>
+<table>
+  <tr><td><code>case.gleapp</code></td><td>la base de datos SQLite: todo lo que GLEAPP sabe de un archivo está aquí, así que las ejecuciones se pueden reanudar</td></tr>
+  <tr><td><code>thumbs/</code></td><td>las miniaturas de la galería y los fotogramas clave de video generados</td></tr>
+  <tr><td><code>views/</code></td><td>JPEG a tamaño completo convertidos desde formatos que el navegador no puede mostrar (HEIC, TIFF, KTX, ...)</td></tr>
+  <tr><td><code>cache/</code></td><td>copias bajo demanda para el visor (con tamaño limitado; se descartan las más antiguas)</td></tr>
+  <tr><td><code>tmp/</code></td><td>copias bajo demanda para el procesamiento, que se eliminan después de usarse</td></tr>
+  <tr><td><code>staged/</code></td><td>miembros de archivos copiados al caso, cuando <em>Copiar los medios de la extracción/adquisición al caso</em> está activado</td></tr>
+  <tr><td><code>extracted/</code></td><td>medios extraídos de archivos contenedores: archivos comprimidos (<code>.zip</code> / <code>.tar</code> / <code>.gz</code>) encontrados en un origen, paquetes <code>LZC</code> de Snapchat y videos unidos desde cachés de ExoPlayer</td></tr>
+  <tr><td><code>reports/</code></td><td>los informes exportados: CSV/JSON, listas MD5, KMZ, exportaciones de Project VIC, proyectos LAVA</td></tr>
+  <tr><td><code>backups/</code></td><td>copias instantáneas de <code>case.gleapp</code> con fecha y hora</td></tr>
+</table>
+<p>Cambie de caso con <strong>⇤ Cerrar caso</strong> (primero toma una instantánea y
+vuelve al lanzador). La evidencia original nunca se modifica: GLEAPP solo la lee. Los
+datos del caso se escriben dentro de la carpeta del caso. Su configuración, el almacén de
+hashes compartido, su reserva de hashes y los mapas base importados están, en cambio, en
+sus carpetas de datos de usuario (sección&nbsp;18).</p>
+<p><strong>Línea de comandos.</strong> Un comando que trabaja sobre un caso recibe la
+carpeta del caso como <code>-c &lt;case folder&gt;</code>, escrito antes del subcomando:
+<code>gleapp -c &lt;case folder&gt; process --force</code>. Sin <code>-c</code>, GLEAPP
+busca una carpeta llamada <code>case</code> en el directorio actual. Los comandos
+<code>maps</code>, <code>hashset --global</code> y <code>stash</code> (salvo
+<code>stash --add</code>) no usan un caso.</p>
+<p>Una imagen cifrada (una imagen de disco de Apple, un AFF cifrado o un conjunto que FTK
+Imager cifró con AD encryption) toma su contraseña de
+<code>--password-file &lt;file&gt;</code> (la primera línea del archivo) o de
+<code>--password-env &lt;variable&gt;</code> (el nombre de una variable de entorno que la
+contiene), ambos escritos antes del subcomando, como <code>-c</code>. Cualquiera de los
+dos puede darse más de una vez cuando un caso contiene varias imágenes cifradas; cada
+contraseña se prueba en cada imagen, en cada volumen BitLocker que contenga como
+contraseña y como contraseña de recuperación, en cada volumen APFS cifrado que contenga
+como contraseña y como clave de recuperación personal, y en cada contenedor LUKS que
+contenga como frase de contraseña.
+Una imagen sellada con un certificado toma la clave privada del certificado con
+<code>--private-key &lt;file&gt;</code>, y un volumen BitLocker su clave de inicio con
+<code>--bitlocker-key &lt;file&gt;</code>; ambos se pueden repetir. Sin ninguno de ellos,
+GLEAPP pregunta en la terminal, y sin una terminal se detiene e indica qué opción usar,
+salvo para un volumen BitLocker, APFS o LUKS: ese queda bloqueado, se nombra en una
+advertencia (con la pista de contraseña de un volumen APFS) y no se recorre, y se lee el
+resto de la imagen. Lo que usted da se mantiene solo para ese comando, así que
+<code>process</code>, <code>report</code>, <code>source stage</code> y
+<code>source carve</code> lo necesitan de nuevo.
+Una contraseña nunca se toma en la propia línea de comandos, donde otros usuarios del
+equipo y el historial del shell podrían leerla.</p>
+
+<h2 id="gallery">3. La galería de revisión</h2>
+<table>
+  <tr><th>Panel</th><th>Qué es</th></tr>
+  <tr><td><strong>Izquierdo</strong></td><td>Barra lateral de filtros</td></tr>
+  <tr><td><strong>Central</strong></td><td>Galería o lista de detalles (selector <strong>▦&nbsp;Galería / ☰&nbsp;Lista</strong> en la barra de controles)</td></tr>
+  <tr><td><strong>Derecho</strong></td><td>Panel de detalles (se alterna con <kbd>I</kbd> o con el botón; el estado se recuerda)</td></tr>
+</table>
+<p>La barra de controles también contiene Columnas (vista de lista), Ordenar, miniaturas
+por página, Tamaño de miniatura, el selector de <strong>Zona horaria</strong> y la
+leyenda de atajos.</p>
+
+<h3>Vista de lista de detalles</h3>
+<p><strong>☰&nbsp;Lista</strong> muestra una fila por archivo con una columna para cada
+dato almacenado, para hacer triaje por metadatos en lugar de a la vista. <strong>Siempre
+muestra todas las filas</strong>: los duplicados exactos y visuales nunca se agrupan, así
+que una foto que es a la vez un archivo suelto y un miembro de un archivo comprimido
+anidado aparece dos veces. <em>Agrupar duplicados</em> está desactivado aquí.</p>
+<p><strong>Filtros de columna.</strong> Escriba en el cuadro que está debajo de un
+encabezado. Los filtros se ejecutan en el servidor sobre todo el resultado, no solo sobre
+la página visible. Las palabras clave del filtro (<code>none</code>, <code>set</code>) se
+escriben en inglés.</p>
+<table>
+  <tr><th>Columna</th><th>Qué escribir</th><th>Ejemplos</th></tr>
+  <tr><td><strong>Texto</strong></td><td>Subcadena, sin distinguir mayúsculas. <code>none</code> = vacío, <code>set</code> = no vacío. <strong>Nombre</strong> y <strong>Ruta del archivo</strong> coinciden con lo que se muestra, incluida la alternativa (nombre / ruta en disco) cuando un archivo no tiene nombre original ni ruta VIC.</td><td><code>dcim</code>, <code>none</code></td></tr>
+  <tr><td><strong>Números</strong></td><td>Igual, comparación o rango. <code>none</code> / <code>set</code> también funcionan.</td><td><code>500</code>, <code>&gt;=500</code>, <code>&lt;500</code>, <code>100-500</code>, <code>100 .. 500</code></td></tr>
+  <tr><td><strong>Tamaño</strong></td><td>Un número solo son <strong>kilobytes</strong>, y significa "ese tamaño o más" (la columna nunca muestra bytes sin más). Si no, agregue una unidad.</td><td><code>&gt;1mb</code>, <code>100kb-2mb</code>, <code>500b</code>, <code>2gb</code></td></tr>
+  <tr><td><strong>Proporción de piel</strong></td><td>Un número solo es un <strong>porcentaje</strong>, y significa "eso o más". Los rangos funcionan.</td><td><code>30</code> (&ge;&nbsp;30&nbsp;%), <code>10-50</code></td></tr>
+  <tr><td><strong>Duración</strong></td><td><code>m:ss</code> o segundos sin más. Un valor solo significa "esa duración o más".</td><td><code>0:30</code>, <code>&gt;1:00</code>, <code>1:00-5:00</code></td></tr>
+  <tr><td><strong>Lat. / lon. GPS</strong></td><td>Un número solo es una coincidencia parcial. Las comparaciones, los rangos y <code>set</code> / <code>none</code> también funcionan.</td><td><code>45</code> (encuentra <code>45.4215</code> y <code>-45...</code>), <code>&gt;40</code>, <code>-80 .. -70</code></td></tr>
+  <tr><td><strong>Fechas</strong> (Creación, Escritura y Acceso en el SA, Ingestado)</td><td>Dos <strong>selectores de calendario</strong>, <em>desde</em> y <em>hasta</em>; complete uno o ambos. Los límites de cada día siguen la <strong>Zona horaria</strong> elegida, así que los rangos coinciden con las fechas que ve.</td><td></td></tr>
+  <tr><td><strong>Captura (EXIF)</strong></td><td>Se guarda como texto; se filtra como subcadena.</td><td><code>2024-06</code></td></tr>
+  <tr><td><strong>Tipo, Origen, Categoría, Tipo de hash</strong></td><td>Elija de una lista.</td><td></td></tr>
+</table>
+<p><strong>Otros controles de la lista</strong></p>
+<table>
+  <tr><th>Control</th><th>Qué hace</th></tr>
+  <tr><td><strong>Ordenar</strong></td><td>Haga clic en un encabezado; otro clic invierte el orden. Una flecha marca la columna activa.</td></tr>
+  <tr><td><strong>Cambiar el tamaño</strong></td><td>Arrastre el borde derecho de un encabezado. Los valores recortados muestran puntos suspensivos; pase el cursor para ver el texto completo. Doble clic en el borde restablece esa columna.</td></tr>
+  <tr><td><strong>Columnas&nbsp;▾</strong></td><td>Elija las columnas visibles. Ajustes <strong>Todos</strong> / <strong>Predeterminadas</strong>, y <strong>Restablecer anchos</strong>.</td></tr>
+  <tr><td><strong>Borrar filtros de columna</strong></td><td>Botón de la barra de herramientas (muestra cuántos hay activos). Quita todos los filtros de columna y conserva el orden y las columnas. <strong>Borrar</strong> en la barra lateral también los quita, además de los filtros de la barra lateral.</td></tr>
+</table>
+<h3>Rutas</h3>
+<ul>
+  <li><strong>Ruta del archivo:</strong> la ruta original registrada en el JSON de
+    Project&nbsp;VIC (<code>MediaFiles.FilePath</code>), donde estaba el archivo en el
+    dispositivo de origen. Un caso de ingesta de carpeta (sin datos VIC) usa en su lugar la
+    ruta en disco.</li>
+  <li><strong>Ruta del archivo (copia de trabajo):</strong> dónde encontró GLEAPP el
+    archivo en su equipo. Agréguela desde <strong>Columnas&nbsp;▾</strong>.</li>
+  <li><strong>Entradas VIC duplicadas:</strong> los exportadores guardan una copia por cada
+    MD5 distinto, así que varias entradas Media pueden nombrar un mismo archivo. Se
+    convierten en una sola fila con la ruta del dispositivo de la primera entrada, y las
+    demás se listan en <em>También en</em>. La cantidad informada son entradas, así que
+    puede superar la cantidad de filas. La línea de importación del panel Origen muestra
+    ambas.</li>
+</ul>
+
+<h3>Fechas</h3>
+<p>Cuatro tipos distintos. No los confunda.</p>
+<table>
+  <tr><th>Columna</th><th>Significado</th></tr>
+  <tr><td><strong>Captura (EXIF)</strong></td><td>Cuándo dice el medio que fue tomado: <code>DateTimeOriginal</code> de EXIF / metadatos incrustados <em>únicamente</em>. Vacía si no hay.</td></tr>
+  <tr><td><strong>Creación (SA)</strong></td><td>Hora de creación en el sistema de archivos: <code>os.stat</code> en un recorrido de carpeta, <code>MediaFiles.Created</code> en una importación VIC, el registro NTFS para un archivo recorrido o recuperado de un E01.</td></tr>
+  <tr><td><strong>Escritura (SA)</strong></td><td>Última modificación: mtime de <code>os.stat</code>, <code>MediaFiles.Written</code> de VIC, o el registro NTFS para un archivo de un E01.</td></tr>
+  <tr><td><strong>Acceso (SA)</strong></td><td>Último acceso: atime de <code>os.stat</code>, <code>MediaFiles.Accessed</code> de VIC, o el registro NTFS para un archivo de un E01.</td></tr>
+</table>
+<ul>
+  <li><strong>Nunca es una hora de captura:</strong> una marca de tiempo del sistema de
+    archivos nunca se usa para completar "Captura". Las cuatro aparecen en el panel de
+    detalles, en la vista de lista y en los informes, con los mismos nombres.</li>
+  <li><strong>FAT32 / exFAT en un E01:</strong> guardan una hora local sin zona, así que las
+    tres horas del SA quedan vacías y aparecen en cambio como <strong>Registrado (tal como
+    se almacenó, sin zona)</strong>. Esto vale para la vista de lista, el informe HTML, el
+    CSV (<code>recorded_times</code>) y las tablas de LAVA. Vea &sect;16.</li>
+  <li><strong>Las exportaciones VIC varían:</strong> una escribió creación, escritura y
+    acceso en la mayoría de las entradas; otra escribió la escritura en algunas, la creación
+    en casi ninguna y el acceso en ninguna. GLEAPP lee todas las marcas de tiempo escritas
+    (formas <code>...Z</code> y <code>...-05:00</code>), así que una columna con pocos datos
+    en un caso VIC se debe a la exportación, no a un error de lectura.</li>
+</ul>
+
+<h3>Zona horaria</h3>
+<ul>
+  <li><strong>Se guardan en UTC:</strong> las horas del sistema de archivos y de
+    ingesta.</li>
+  <li><strong>Selector de zona horaria:</strong> elija zonas comunes, la zona de su
+    dispositivo o cualquier nombre IANA con <em>Otra...</em>. El horario de verano se aplica
+    automáticamente.</li>
+  <li><strong>Se guarda</strong> por caso y como valor predeterminado para casos nuevos, y
+    se estampa en el encabezado del informe.</li>
+  <li><strong>Nunca se aplica a Captura&nbsp;(EXIF):</strong> esas son la hora local de la
+    cámara, siempre mostrada tal como se registró.</li>
+</ul>
+
+<h3>Encabezado</h3>
+<p><strong>&#9776;&nbsp;Menú</strong> agrupa las herramientas del caso:</p>
+<table>
+  <tr><th>Grupo</th><th>Elementos</th></tr>
+  <tr><td><strong>Caso</strong></td><td>&#9881;&nbsp;Categorías, &#9881;&nbsp;Marcas, Instantáneas, Exportar Project&nbsp;VIC (solo casos VIC)</td></tr>
+  <tr><td><strong>Referencia</strong></td><td>Mapas, Reserva&nbsp;de&nbsp;hashes, Datos de referencia (NSRL), Conjuntos de hashes de Project&nbsp;VIC</td></tr>
+  <tr><td><strong>Ayuda</strong></td><td>Manual, Historial de procesamiento</td></tr>
+</table>
+<p>Junto al menú:</p>
+<table>
+  <tr><th>Botón</th><th>Qué hace</th></tr>
+  <tr><td><strong>+&nbsp;Agregar evidencia&hellip;</strong></td><td>Ingesta en este caso otra carpeta, archivo de extracción, imagen de disco (E01 o en bruto) o JSON de Project&nbsp;VIC / de trabajo.</td></tr>
+  <tr><td><strong>&#8676;&nbsp;Cerrar caso</strong></td><td>Primero toma una instantánea.</td></tr>
+  <tr><td><strong>Panel de detalles</strong>, <strong>Exportar informe</strong></td><td>Alternan el panel; abren el diálogo de exportación.</td></tr>
+  <tr><td><strong>&#8635;&nbsp;Actualizar</strong></td><td>Vuelve a aplicar el filtro actual, así que los archivos que ya no coinciden (p. ej., los que acaba de categorizar) salen de la vista.</td></tr>
+  <tr><td><strong>Idioma</strong></td><td>El idioma de la interfaz (&sect;1).</td></tr>
+  <tr><td><strong>&#128276;</strong></td><td>Lista las exportaciones de informes recientes.</td></tr>
+</table>
+
+<h3>Historial de procesamiento</h3>
+<p><strong>&#9776;&nbsp;Menú &rarr; Ayuda.</strong> El registro de procesamiento del caso,
+el más reciente primero: cada ingesta, proceso, detección, comparación con conjuntos de
+hashes, carving y edición del examinador. Es el mismo registro de auditoría que se escribe
+en la exportación LAVA.</p>
+<ul>
+  <li>Una ejecución <strong>process</strong> lista cada etapa (procesamiento de medios,
+    comparación con hashes conocidos, apilado exacto, apilado visual, agrupamiento de casi
+    duplicados) con un&nbsp;&#10003; o un&nbsp;&#10007;, para que una etapa fallida no
+    oculte las que funcionaron.</li>
+  <li><strong>Mostrar</strong> reduce la lista a ejecuciones, ediciones del examinador o
+    ejecuciones con una etapa fallida.</li>
+</ul>
+
+<h2 id="tiles">4. Miniaturas e insignias</h2>
+<p>Cada miniatura muestra la imagen reducida, el <strong>nombre</strong> del archivo, una
+barra de color en la parte inferior con el nombre de su categoría ("Sin categoría" en gris
+si no tiene) y pequeñas insignias. El nombre que se muestra es el <strong>nombre original
+del archivo</strong> cuando se conoce (p. ej., en una importación de Project&nbsp;VIC,
+donde los archivos se guardan en disco con su MD5); pase el cursor para ver el nombre
+completo. La misma regla vale para la columna <strong>Nombre</strong> de la vista de lista
+y para el informe; el nombre almacenado (MD5) sigue disponible como <strong>Nombre
+almacenado</strong>.</p>
+<p>El nombre del archivo y la barra de color de la categoría están <strong>debajo</strong>
+de la miniatura, nunca encima, y la miniatura siempre muestra la imagen
+<em>completa</em> (nunca recortada), lo que importa cuando hay texto incrustado arriba o
+abajo de una captura de pantalla o un Snap. Las pequeñas insignias de las esquinas sí
+quedan sobre la imagen; el visor a tamaño completo muestra la imagen completa sin nada
+encima.</p>
+<table>
+  <tr><td><span class="tag" style="background:#d9822b">VIC</span></td><td>coincidió con un <strong>conjunto de hashes de Project&nbsp;VIC</strong> (pase el cursor para ver el nombre del conjunto y la categoría)</td></tr>
+  <tr><td><span class="tag" style="background:#2563eb">HASH</span></td><td>coincidió con un conjunto de hashes importado que no es de Project&nbsp;VIC, ni benigno conocido, ni su reserva (tipo <em>known</em> u <em>other</em>)</td></tr>
+  <tr><td><span class="tag" style="background:#2f6e4f">NSRL</span></td><td>coincidió con un conjunto <em>benigno conocido</em> (la insignia muestra la primera palabra del nombre del conjunto, en mayúsculas y cortada a 6 caracteres); se categoriza automáticamente como <strong>Non-pertinent</strong> si aún no tiene categoría</td></tr>
+  <tr><td><span class="tag" style="background:#7c4dff">STASH</span></td><td>coincidió con su <strong>reserva local de hashes</strong>: un archivo que categorizó 1&ndash;3 en otro caso. Adopta esa categoría si aún no tiene una</td></tr>
+  <tr><td><span class="tag" style="background:#e5484d">ERR</span></td><td>un error de procesamiento y sin miniatura: el archivo no se pudo decodificar (pase el cursor sobre la miniatura / abra los detalles para ver el motivo)</td></tr>
+  <tr><td><span class="tag" style="background:#0e7490">3&#128100;</span></td><td>cantidad de rostros según la detección</td></tr>
+  <tr><td>&#128205;</td><td>tiene coordenadas GPS en sus metadatos</td></tr>
+  <tr><td>&#8776;&nbsp;N</td><td>parte de una <strong>pila visual</strong> de N: la misma imagen, recodificada/redimensionada (sombra desplazada azul)</td></tr>
+  <tr><td>&#11034;&nbsp;N</td><td>parte de una <strong>pila exacta</strong> de N: copias idénticas byte a byte (sombra desplazada gris)</td></tr>
+  <tr><td>&#10003;</td><td>seleccionado (también con un contorno azul y un leve aclarado)</td></tr>
+</table>
+<p>Un archivo puede estar en los dos tipos de pila. En ese caso ambas insignias aparecen
+una junto a otra en la esquina inferior derecha de la miniatura (<code>&#8776;&nbsp;N</code>
+primero, luego <code>&#11034;&nbsp;N</code>), y la sombra desplazada muestra la pila
+visual.</p>
+<p>Las miniaturas de video muestran una etiqueta de duración y un símbolo de reproducción;
+pase el cursor y muévalo de izquierda a derecha sobre una miniatura de video para
+<strong>recorrer</strong> sus fotogramas clave.</p>
+<p>Un clic selecciona. Doble clic abre el <strong>visor a tamaño completo</strong> (el
+video se reproduce con controles; los formatos de imagen no web se convierten al vuelo).
+Clic derecho abre un menú contextual (buscar similares, detalles, ver a tamaño completo,
+categorizar, marcar, exportar MD5, abrir el archivo original).</p>
+<p>En el visor a tamaño completo, <strong>Aclarar zonas oscuras</strong> (arriba a la
+izquierda) aplica un realce de sombras ajustable para revisar el contenido de fotos muy
+subexpuestas. Es un <strong>filtro solo de visualización</strong>: el archivo, su miniatura
+y sus hashes nunca cambian; solo se recuerda el ajuste de activado/desactivado e intensidad
+(por navegador). Los informes exportados muestran la imagen original, no la vista
+aclarada.</p>
+
+<h2 id="select">5. Seleccionar archivos</h2>
+<table>
+  <tr><td>Clic</td><td>selecciona solo este archivo</td></tr>
+  <tr><td><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + clic</td><td>agrega/quita un archivo de la selección</td></tr>
+  <tr><td><kbd>Shift</kbd> + clic</td><td>selecciona el rango desde el ancla hasta aquí (reemplaza el rango; el ancla se queda fija para que pueda ajustarlo). <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+clic agrega un rango.</td></tr>
+  <tr><td><kbd>A</kbd></td><td>selecciona todos los archivos de la página</td></tr>
+  <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>mueve la selección una miniatura (pasa de página en el borde)</td></tr>
+</table>
+<p>La barra de selección aparece cuando hay algo seleccionado: botones de categoría, Quitar
+categoría, Exportar MD5, Deseleccionar. Cualquier acción de categoría (barra, tecla
+numérica, menú contextual, panel de detalles) se aplica a toda la selección.</p>
+
+<h2 id="details">6. El panel de detalles</h2>
+<p>Se alterna con <kbd>I</kbd>. Haga clic en una miniatura y el panel se completa, de
+arriba abajo:</p>
+<table>
+  <tr><th>Zona</th><th>Qué contiene</th></tr>
+  <tr><td><strong>Vista previa</strong></td><td>Miniatura con <strong>Ver a tamaño completo</strong>. Para un video, una tira de fotogramas clave (haga clic en uno para abrir el visor en ese momento). Para un archivo con GPS, un mapa sin conexión (&sect;19) con <strong>⤢ Tamaño completo</strong>.</td></tr>
+  <tr><td><strong>Título</strong></td><td>Nombre original, ruta y cualquier error de procesamiento.</td></tr>
+  <tr><td><strong>Categoría y marcas</strong></td><td>La categoría actual y las marcas del archivo (<strong>+ marca</strong> para agregar, &times; para quitar).</td></tr>
+  <tr><td><strong>Acciones</strong></td><td><strong>Buscar similares</strong>, <strong>Vista hexadecimal</strong>.</td></tr>
+  <tr><td><strong>Metadatos</strong></td><td>La tabla de abajo.</td></tr>
+  <tr><td><strong>Notas</strong></td><td>Un cuadro que se guarda automáticamente mientras escribe.</td></tr>
+  <tr><td><strong>Copias</strong></td><td>Tiras con las copias exactas y los archivos visualmente similares (haga clic en uno para ir a él), con <strong>Mostrar todas las copias</strong> y <strong>Mostrar solo este grupo</strong> para filtrar la galería a ese grupo.</td></tr>
+</table>
+
+<h3>Tabla de metadatos</h3>
+<p>Un campo aparece solo cuando el archivo tiene un valor para él.</p>
+<table>
+  <tr><th>Grupo</th><th>Campos</th></tr>
+  <tr><td><strong>Identidad</strong></td><td>Origen, Tipo, Nombre original, Ruta del archivo, También en, Caché de app, Almacenado en, MIME</td></tr>
+  <tr><td><strong>Archivo</strong></td><td>Tamaño, Dimensiones, Duración, Cámara</td></tr>
+  <tr><td><strong>Fechas</strong></td><td>Captura (EXIF, hora local de la cámara), Creación (SA), Escritura (SA), Acceso (SA), Registrado (tal como se almacenó, sin zona). Vea &sect;3.</td></tr>
+  <tr><td><strong>Project&nbsp;VIC</strong></td><td>MediaID, MediaID del registro, serie, etiquetas, marcas. <strong>Exif de VIC, tal como se registró</strong> abre una lista contraída con el Exif que trae el registro VIC, mostrado como texto. No son los metadatos propios del archivo.</td></tr>
+  <tr><td><strong>Detección</strong></td><td>Rostros, Proporción de piel</td></tr>
+  <tr><td><strong>Coincidencias</strong></td><td>Coincide en (qué fuentes de hashes lo marcaron), Copias exactas, Visualmente similares, Grupo de similares, Error</td></tr>
+  <tr><td><strong>Ubicación</strong></td><td>GPS, con un botón <strong>Copiar</strong></td></tr>
+  <tr><td><strong>Hashes</strong></td><td>MD5, SHA-1, SHA-256, pHash</td></tr>
+</table>
+
+<h3>Vista hexadecimal</h3>
+<ul>
+  <li>Ábrala con <kbd>H</kbd>, con clic derecho &rarr; Vista hexadecimal, o con el botón
+    <strong>Vista hexadecimal</strong> del panel.</li>
+  <li>Muestra un volcado desplazable de desplazamiento / hex / ASCII del archivo en bruto.
+    Funciona con cualquier archivo.</li>
+  <li>Avance por páginas o salte a un desplazamiento (decimal, o hexadecimal con el prefijo
+    <code>0x</code>).</li>
+</ul>
+
+<h2 id="categories">7. Categorías: el esquema obligatorio de Project&nbsp;VIC</h2>
+<p>Cada caso se crea con los <strong>códigos 0–5</strong>, el esquema de categorías de
+Project&nbsp;VIC 2.0 (EE.&nbsp;UU.). Están <strong>bloqueados</strong>: no se pueden
+renombrar, cambiar de color, reordenar, ocultar ni eliminar (en el editor de
+⚙&nbsp;Categorías aparecen como solo lectura con un 🔒). Las teclas numéricas coinciden con
+los códigos: <kbd>0</kbd> aplica Non-pertinent, <kbd>1</kbd>–<kbd>4</kbd> aplican los
+códigos 1–4, y <kbd>5</kbd> devuelve un archivo a Uncategorized (sin categoría). Los
+nombres de las categorías se muestran en inglés, tal como los define Project&nbsp;VIC.</p>
+<table>
+  <tr><th>Código</th><th>Nombre</th><th>Para qué sirve</th></tr>
+  <tr>
+    <td><b>0</b></td><td>Non-pertinent</td>
+    <td>No relevante. <strong>Una coincidencia de hash benigno conocido de NSRL
+    categoriza aquí automáticamente un archivo sin categoría.</strong></td>
+  </tr>
+  <tr>
+    <td><b>1</b></td><td>CAM (Child Abuse Material)</td>
+    <td>Representa a un niño real prepúber, o a un menor que evidentemente no alcanzó la
+    pubertad, en un acto sexual; la exhibición lasciva de los genitales o la zona púbica;
+    o el abuso sádico/masoquista de un menor. La categoría más grave: material ilícito.
+    Relevante / probatorio en los informes.</td>
+  </tr>
+  <tr>
+    <td><b>2</b></td><td>Child Exploitative / Age Difficult</td>
+    <td>Una representación sexualizada de un menor que no alcanza el umbral de la
+    Categoría&nbsp;1 (p. ej., poses sexuales sin penetración, "erotismo infantil"
+    sexualizado, un menor púber), <em>o</em> una persona cuya edad es realmente difícil de
+    determinar y podría ser menor. Relevante.</td>
+  </tr>
+  <tr>
+    <td><b>3</b></td><td>CGI / Animation (Child Exploitative)</td>
+    <td>Imágenes generadas por computadora, dibujos, caricaturas, anime o arte renderizado
+    que representan contenido de Categoría&nbsp;1 o 2. No es un niño real, pero sigue
+    siendo material de explotación. Relevante.</td>
+  </tr>
+  <tr>
+    <td><b>4</b></td><td>Comparison Images (Non-pertinent)</td>
+    <td>Imágenes conservadas con fines de comparación o identificación: imágenes de
+    referencia de series conocidas, imágenes usadas para identificar a una víctima, un
+    lugar o un agresor, que en sí mismas no son pertinentes al delito principal. También
+    para imágenes no pertinentes que el examinador quiere mantener marcadas
+    específicamente. No relevante.</td>
+  </tr>
+  <tr>
+    <td><b>5</b></td><td>Uncategorized</td>
+    <td>Aún sin revisar, sin decisión tomada. Es el estado predeterminado y la lista
+    pendiente que se va trabajando. Filtre por ella y categorice cada archivo; el cursor
+    avanza solo al siguiente, y ↻&nbsp;Actualizar quita de la vista los ya
+    resueltos.</td>
+  </tr>
+</table>
+<p><strong>Agregar las suyas.</strong> "+ Agregar categoría", en el editor de
+⚙&nbsp;Categorías, crea el <strong>código 6</strong> en adelante. Sus categorías se pueden
+editar por completo: renombrar, cambiar de color (haga clic en la muestra de color junto al
+nombre), eliminar (mientras están en uso se eliminan de forma lógica, así que las
+etiquetas se conservan) y arrastrar para reordenar (siempre se ordenan después de las
+predefinidas). Las cuatro primeras reciben, en orden, los atajos de teclas numéricas 6–9 y
+empiezan con un color asignado automáticamente.</p>
+<p><strong>Llevar sus categorías y marcas a otros casos.</strong> En el editor de
+⚙&nbsp;Categorías o de ⚙&nbsp;Marcas, <strong>Guardar como mi conjunto…</strong> conserva
+las categorías propias de este caso y, si lo marca, sus marcas, para otros casos. Cada parte
+tiene su propia casilla, así que las marcas solo viajan cuando usted lo elige. Solo se
+guardan las categorías con nombre y visibles; las predefinidas de Project VIC (0–5) ya
+están en todos los casos y nunca se guardan. Guardar una parte reemplaza lo que había
+guardado de ella antes (el diálogo lo advierte); la parte que deja sin marcar queda como
+estaba. El conjunto se guarda en <code>categories.json</code>, en la carpeta de
+configuración de GLEAPP (<code>%APPDATA%\GLEAPP</code> en Windows), fuera de cualquier
+caso.</p>
+<p>Un caso nuevo puede empezar con el conjunto (las casillas del formulario Caso nuevo,
+&sect;1), o <strong>Agregar mi conjunto guardado…</strong>, en cualquiera de los dos
+editores, lo agrega al caso abierto. Se omiten los nombres que el caso ya tiene (sin
+distinguir mayúsculas), y una categoría oculta en el caso se vuelve a mostrar. Una
+categoría conserva su código guardado, para que sea el mismo número en todos los casos y en
+todas las exportaciones de Project VIC. Si el caso ya usa ese código para otra categoría,
+recibe el siguiente código libre y el resultado lo indica. Cada guardado y cada agregado se
+escriben en el registro de auditoría del caso. Es una copia, no un vínculo: editar las
+categorías de un caso nunca cambia el conjunto guardado, y guardar un conjunto nuevo nunca
+cambia un caso anterior.</p>
+<p><strong>JSON de Project VIC.</strong> Un <code>Category</code> de 0 se importa como
+Non-pertinent; una categoría vacía (<code>null</code>) o 5 se importa como Uncategorized. Al
+exportar, Uncategorized se escribe como <code>null</code>.</p>
+<p><strong>Casos creados con un GLEAPP anterior.</strong> Antes del esquema v18, GLEAPP
+guardaba estos dos códigos al revés (0 Uncategorized, 5 Non-pertinent). La primera vez que
+esta versión abre un caso así, los intercambia en cada archivo y categoría, para que cada
+decisión conserve su significado; un archivo sin categoría pasa a Uncategorized. El
+intercambio se ejecuta una sola vez. Después, no abra el caso con un GLEAPP anterior: leería
+los códigos a la manera antigua. Ejecute <strong>Volver a comprobar</strong> en un caso que
+use un conjunto de hashes de Project VIC, para que se apliquen las entradas con categoría
+0.</p>
+
+<h3 id="flags">Marcas: una etiqueta independiente por archivo</h3>
+<p>La <strong>categoría</strong> de un archivo es siempre exactamente un valor. Las
+<strong>marcas</strong> son aparte y se suman: un archivo puede tener cualquier cantidad
+(Evidencia, Bondage, Prioridad, lo que necesite su flujo de trabajo) además de su categoría,
+y una marca nunca cambia cuál es la categoría. Abra el selector desde el panel de detalles
+de una miniatura ("+ marca") o con clic derecho &rarr; Marcas&hellip;; marcar una casilla la
+aplica de inmediato y desmarcarla la quita. El editor de <strong>⚙&nbsp;Marcas</strong>
+(Menú &rarr; Caso) administra la lista en sí: agregar, renombrar, cambiar de color,
+arrastrar para reordenar, eliminar. A diferencia de las categorías, <strong>ninguna marca
+viene precargada ni bloqueada</strong>: la lista está vacía hasta que usted agrega, así que
+el vocabulario es completamente suyo. Las marcas se pueden buscar (el cuadro de búsqueda
+libre coincide con los nombres de marca), filtrar (la lista Marca de la barra lateral),
+ordenar como columna de la lista de detalles, y aparecen en cada informe como pequeñas
+etiquetas de color debajo de la insignia de categoría, además de su propio desglose "By
+flag" en el resumen del informe. No intervienen en la comparación con hashes conocidos ni
+en la reserva local de hashes, que se basan solo en la categoría.</p>
+
+<h2 id="filters">8. Filtros: todas las opciones</h2>
+<p>Los filtros se combinan con Y (AND) y se aplican a medida que los cambia.</p>
+<ul>
+  <li>La parte superior de la barra lateral siempre está visible: <strong>Buscar</strong>,
+  <strong>Categoría</strong>, <strong>Tipo</strong>, <strong>Origen</strong>.</li>
+  <li>Debajo hay una sección contraíble por función: Hashes conocidos, Rostros y piel,
+  Duplicados, Errores, Ubicación y, cuando corresponden al caso, Carving y Archivos
+  comprimidos. Cada sección contiene sus controles de filtro <em>y</em> sus botones
+  (importar, volver a comprobar, detectar, reintentar, volver a buscar, carving,
+  expandir).</li>
+  <li>Una sección con un filtro activo muestra un <strong>punto</strong> en su encabezado,
+  para que vea lo aplicado aunque esté contraída, y cada sección recuerda si la dejó
+  abierta.</li>
+  <li>Arriba también se muestra la <strong>cantidad de filtros</strong> con
+  <strong>Borrar</strong>; la línea de estado del encabezado muestra cuántos archivos
+  coinciden.</li>
+</ul>
+
+<h3>Buscar</h3>
+<p>Texto libre. Cada palabra separada por espacios debe coincidir en algún lugar (Y).
+Dentro de una palabra, busca en todo esto:</p>
+<ul>
+  <li><strong>Nombres y rutas:</strong> ruta relativa, ruta absoluta, nombre y ruta
+  originales del dispositivo</li>
+  <li><strong>Metadatos:</strong> cámara, notas, MIME, origen, fecha de captura,
+  examinador</li>
+  <li><strong>Hashes y coincidencias:</strong> nombre del hash conocido, MD5 / SHA-1 /
+  SHA-256 / pHash (funcionan los hashes parciales)</li>
+  <li><strong>Otros:</strong> texto de error, marcas</li>
+</ul>
+<p>Así, <code>dcim 2024-07</code> encuentra archivos cuya ruta menciona DCIM y cuya fecha es
+de julio de 2024.</p>
+
+<h3>Categoría / Tipo / Origen</h3>
+<table>
+  <tr><th>Control</th><th>Qué hace</th></tr>
+  <tr><td><strong>Categoría</strong></td><td><strong>Cualquiera</strong>, una categoría concreta (predefinidas y propias, con las ocultas señaladas), o <strong>Uncategorized</strong>, que activa el flujo de revisión con avance automático.</td></tr>
+  <tr><td><strong>Tipo</strong></td><td><strong>imagen</strong>, <strong>video</strong> u <strong>otro</strong> (no decodificable, documentos, formatos desconocidos). En <em>Contenedores (no son imágenes en sí)</em>, <strong>Archivos comprimidos (zip, 7z, tar, gz)</strong>, <strong>Documentos (PDF, páginas web)</strong> y <strong>Fragmentos de caché de apps (ExoPlayer)</strong> son la única forma de ver esos archivos en sí: <strong>se ocultan de la galería y de los informes por defecto</strong>; solo se muestran las imágenes y videos encontrados dentro de ellos.</td></tr>
+  <tr><td><strong>Origen</strong></td><td>Restringe a un origen de ingesta (el nombre de su carpeta o archivo; un JSON de Project&nbsp;VIC se lista por su nombre de archivo).</td></tr>
+</table>
+<p><strong>Reasociar con el origen…</strong>, en la barra superior, aparece cuando el caso
+contiene un origen de carpeta o de Project&nbsp;VIC. Si la carpeta de ese origen se movió o
+desapareció, el origen queda <em>desasociado</em>: el botón se vuelve ámbar con un &#9888;,
+y un aviso arriba de la galería nombra el origen y la carpeta donde se esperaba. Esto se
+vuelve a comprobar cada minuto, así que también se señala una carpeta que desaparece
+mientras el caso está abierto. La vista a tamaño completo y la exportación necesitan los
+archivos; las miniaturas, hashes y categorías siguen funcionando.
+<strong>Reasociar con el origen…</strong> pide la nueva ubicación de la carpeta y comprueba
+cada archivo allí (misma ruta relativa, mismo tamaño, mismo MD5) antes de cambiar nada. Un
+solo archivo ausente o distinto lo rechaza, y el caso queda como estaba. Una reasociación
+se registra en el Historial de procesamiento.</p>
+
+<h3>Carving <em>(solo imágenes de disco)</em></h3>
+<ul>
+  <li><strong>Cómo se recuperó</strong> tiene cuatro opciones:
+    <ul>
+      <li><em>Todos</em></li>
+      <li><em>Recorrido, aún listado</em>: archivos que un sistema de archivos aún lista, con
+        nombres y fechas</li>
+      <li><em>Recuperado de un registro eliminado</em>: un archivo eliminado reconstruido a
+        partir del registro que aún lo nombraba, un registro MFT de NTFS o una entrada de
+        directorio de FAT32 o exFAT, con su nombre real</li>
+      <li><em>Carving en espacio no asignado</em>: encontrado por firma en espacio que ningún
+        volumen reclama, sin nombre ni fecha</li>
+    </ul>
+  </li>
+  <li>La vista <strong>&#9776;&nbsp;Lista</strong> ofrece lo mismo como columna
+    <strong>Cómo se recuperó</strong>, desactivada por defecto.</li>
+  <li>Debajo, cada imagen de disco del caso con sus cantidades de <em>recorridos</em> /
+    <em>recuperados de registros eliminados</em> / <em>por carving</em> y un botón
+    <strong>Carving de medios eliminados</strong> / <strong>Hacer carving otra
+    vez</strong>: vea &sect;16.</li>
+</ul>
+
+<h3>Archivos comprimidos y documentos</h3>
+<ul>
+  <li><strong>Archivos comprimidos</strong>: cuántos archivos comprimidos contiene el caso y
+  cuántos archivos salieron de ellos. Debajo, <strong>Expandir archivos comprimidos</strong> /
+  <strong>Volver a revisar archivos comprimidos</strong> (cuando el caso contiene alguno; vea
+  &sect;16), y <strong>Solo archivos extraídos de un archivo comprimido</strong>.</li>
+  <li><strong>Documentos</strong>: las mismas dos cantidades para PDF, páginas web, MHTML y
+  archivos web, <strong>Extraer medios de documentos</strong> (vea &sect;16), y <strong>Solo
+  archivos extraídos de un documento</strong>.</li>
+  <li>La información emergente de cada botón dice qué abre. El Tipo <em>Archivos
+  comprimidos</em> o <em>Documentos</em> lista los contenedores en sí. Un video unido desde la
+  caché de ExoPlayer de una app no entra en ninguna de las dos casillas.</li>
+</ul>
+
+<h3>Hashes conocidos</h3>
+<table>
+  <tr><th>Control</th><th>Qué hace</th></tr>
+  <tr><td><strong>Mostrar</strong></td><td><em>todos los archivos</em> (predeterminado), <em>cualquier conjunto de hashes importado</em>, o <em>solo</em> un conjunto con nombre (p. ej., un CyberTip). Filtra a los archivos que marcó ese conjunto.</td></tr>
+  <tr><td><strong>Cualquier coincidencia de hash conocido</strong></td><td>Coincidió con <em>cualquier</em> conjunto de hashes, incluidos el almacén global (NSRL) y la reserva local de hashes.</td></tr>
+  <tr><td><strong>Ocultar NSRL conocidos</strong></td><td>Oculta cada archivo que coincidió con un conjunto <em>benigno conocido</em> (NSRL, etc.), para que los archivos del sistema operativo y de las apps dejen de saturar la revisión. La cantidad junto a la casilla es cuántos se ocultan.</td></tr>
+  <tr><td><strong>Comparar con mi reserva de hashes</strong> / <strong>Comparar con los conjuntos de Project&nbsp;VIC</strong></td><td>Ambos activados por defecto. Desmarque uno en un caso que no tenga nada que ver con él. Sus marcas existentes se borran de inmediato (una marca de otra fuente se mantiene), y <em>Volver a comprobar</em> las recupera después de volver a marcarlo. Un conjunto de Project&nbsp;VIC importado antes de que existiera esta opción no se etiqueta como VIC hasta que se vuelva a importar.</td></tr>
+  <tr><td><strong>Importar conjunto de hashes... / Volver a comprobar</strong>, la lista de conjuntos importados y las líneas de <strong>Datos de referencia</strong> y <strong>reserva de hashes</strong></td><td>Vea la sección&nbsp;11 para el flujo completo.</td></tr>
+</table>
+
+<h3>Rostros y piel</h3>
+<table>
+  <tr><th>Control</th><th>Qué hace</th></tr>
+  <tr><td><strong>Tiene rostros</strong></td><td><code>faces &gt; 0</code> según YuNet. Requiere que se haya ejecutado la detección.</td></tr>
+  <tr><td><strong>Proporción de tono de piel</strong></td><td><strong>Cualquiera</strong>, o 10&nbsp;% / 30&nbsp;% / 50&nbsp;% o más del cuadro con tono de piel. Requiere la detección.</td></tr>
+  <tr><td><strong>Ejecutar detección de rostros / piel</strong></td><td>La ejecuta ahora si no se ejecutó.</td></tr>
+</table>
+
+<h3>Duplicados</h3>
+<table>
+  <tr><th>Control</th><th>Qué hace</th></tr>
+  <tr><td><strong>Mostrar</strong></td><td>Solo archivos que tienen un pariente en la colección. Las opciones están en la tabla de abajo.</td></tr>
+  <tr><td><strong>Agrupar duplicados y coincidencias visuales</strong></td><td>Activado por defecto: una miniatura por grupo visual <strong>en la galería</strong>. El representante se elige entre los archivos que <em>coinciden con sus otros filtros</em>, así que un grupo sigue apareciendo cuando solo un miembro que no es el principal tiene el atributo filtrado. Las cantidades reflejan grupos, no archivos individuales. La vista <strong>&#9776;&nbsp;Lista</strong> siempre muestra todas las filas.</td></tr>
+  <tr><td><strong>Volver a buscar duplicados</strong></td><td>Reconstruye los agrupamientos exactos / visuales / de casi duplicados sin un reprocesamiento completo (úselo después de importar, o en un caso anterior).</td></tr>
+</table>
+<p>Las opciones de <strong>Mostrar</strong>:</p>
+<table>
+  <tr><th>Opción</th><th>Coincide con</th></tr>
+  <tr><td>Tiene algún duplicado</td><td>en una pila exacta de &ge;2, una pila visual o un grupo de casi duplicados</td></tr>
+  <tr><td>Tiene una copia exacta</td><td>existe un gemelo idéntico byte a byte (mismo MD5)</td></tr>
+  <tr><td>Tiene una copia visual</td><td>la misma imagen, recodificada o redimensionada</td></tr>
+</table>
+
+<h3>Errores</h3>
+<ul>
+  <li><strong>Error de procesamiento / sin vista previa</strong>: archivos que no se
+  pudieron decodificar (la cantidad aparece en el encabezado de la sección).
+  <strong>Reintentar archivos fallidos</strong> vuelve a procesar solo esos.</li>
+</ul>
+
+<h3>Fechas</h3>
+<ul>
+  <li><strong>Desde</strong> / <strong>Hasta</strong>: muestra un archivo cuando
+  <strong>cualquiera</strong> de sus fechas cae en el rango, ambos días incluidos: Captura
+  (EXIF), Creación, Escritura o Acceso en el SA, o Registrado (tal como se almacenó). Se
+  oculta un archivo cuyas fechas quedan todas fuera del rango. Cualquiera de los dos extremos
+  puede dejarse vacío. Se aplica igual en la galería y en la lista, a diferencia de los
+  filtros de fecha por columna de la lista, que solo se aplican en la lista.</li>
+  <li><strong>Incluir archivos sin fechas</strong>: también muestra cada archivo que no tiene
+  ninguna de esas cinco fechas (un 0 o un valor vacío cuenta como ninguna, ya que las columnas
+  lo muestran vacío). Sin un rango definido, muestra solo esos archivos.</li>
+  <li>Las horas del sistema de archivos son instantes, así que los días se leen en la
+  <strong>Zona horaria</strong> de visualización, como las muestran sus columnas. La hora de
+  captura EXIF y las lecturas tal como se almacenaron de un volumen FAT o exFAT no tienen
+  zona, así que se comparan con la fecha que escribió el dispositivo. <strong>Ingestado</strong>
+  (cuándo leyó GLEAPP el archivo) no es una de las fechas.</li>
+</ul>
+
+<h3>Ubicación</h3>
+<ul>
+  <li><strong>Tiene GPS</strong>: tiene latitud/longitud en sus metadatos.</li>
+</ul>
+
+<h3>Ordenar</h3>
+<p>Ruta (la ruta del archivo, A&ndash;Z; el predeterminado), tamaño (el más grande
+primero), proporción de piel (la más alta primero) o rostros (los que más tienen primero).
+La galería y la vista de lista comparten un mismo orden: hacer clic en un encabezado de la
+lista también cambia el orden de la galería. Para ordenar por fecha de captura, haga clic en
+el encabezado <strong>Captura (EXIF)</strong> de la vista de lista. "Miniaturas por página"
+(50&ndash;1500) y "Tamaño de miniatura" se recuerdan entre sesiones.</p>
+
+<h2 id="dupes">9. Duplicados y similitud</h2>
+<p>GLEAPP construye tres niveles de agrupamiento durante el procesamiento, del más fuerte
+al más laxo:</p>
+<table>
+  <tr><th>Nivel</th><th>Significado</th><th>Cómo se decide</th></tr>
+  <tr><td>Pila exacta</td><td>archivo idéntico</td><td>mismo SHA-256 (o MD5)</td></tr>
+  <tr><td>Pila visual</td><td>la misma imagen, guardada de nuevo / redimensionada</td><td>hash perceptual dentro de ~6 bits, verificado contra dHash</td></tr>
+  <tr><td>Grupo de casi duplicados</td><td>la misma escena / sujeto: ráfagas, recortes, ediciones, fotogramas de video</td><td>hash perceptual dentro de un umbral más laxo; pHash <em>y</em> dHash deben coincidir</td></tr>
+</table>
+<p>Las imágenes casi uniformes (capturas de pantalla planas, degradados, fotogramas oscuros)
+se excluyen del agrupamiento porque sus hashes perceptuales no significan nada. "Buscar
+similares" (menú contextual o <kbd>F</kbd>) hace una búsqueda perceptual puntual alrededor
+de un archivo.</p>
+
+<h3 id="findsimilar">Buscar similares: copias de una imagen</h3>
+<p>Clic derecho &rarr; <strong>Buscar similares</strong> usa los dos índices de Buscar
+similares del caso. Una ingesta los construye en segundo plano después del procesamiento,
+así que no le agregan tiempo (el progreso aparece en la barra inferior del panel
+izquierdo): primero el material que probablemente interese al examinador, al final las
+imágenes propias del sistema y de las aplicaciones. Buscar similares trabaja con lo que ya
+esté indexado, y su aviso indica cuándo la indexación sigue en curso. La indexación se pausa
+mientras se ejecuta un trabajo; la evidencia agregada después también se indexa. Un caso
+que no se indexó en la ingesta (procesado con una versión anterior, o cerrado antes de que
+terminara la indexación) muestra <strong>Construir índices</strong> en la sección
+<strong>Buscar similares</strong> del panel izquierdo; no se inicia nada hasta que haga
+clic. Desde la línea de comandos, el procesamiento los construye al final. Buscar similares
+sobre una imagen lista entonces sus coincidencias: la misma imagen redimensionada,
+recomprimida, recortada, reflejada, rotada, con otros colores, con texto, enmarcada, con
+marca de agua o pegada en una captura de pantalla. La insignia de cada resultado dice cómo
+se confirmó: <strong>coincidencia &middot; N pts</strong> significa que N puntos coinciden
+con la imagen buscada; <strong>coincidencia</strong> sola, una imagen con demasiado poco
+detalle para puntos, que coincidió por la huella de la imagen completa;
+<strong>idéntico</strong>, un duplicado exacto del archivo. Hasta que se construye el
+índice, Buscar similares ejecuta la comprobación rápida por hash perceptual y el aviso lo
+indica.</p>
+<p>El índice se construye a partir de las miniaturas que ya generó el procesamiento: unos
+400 bytes por imagen, guardados en el archivo del caso. Medido en un caso de teléfono de
+26.586 imágenes con 4.500 copias de prueba agregadas: 6 minutos y 10,6&nbsp;MB para 31.086
+imágenes; una búsqueda tardó alrededor de un segundo, como máximo 8.</p>
+<p>Medido en 300 fotos de ese caso, cada una editada de 15 maneras y buscada en todo el
+caso: se encontró el 95,5% de las copias de las 262 fotos con detalle (el 82% de las pegadas
+en una captura de pantalla de teléfono, del 92 al 99% para cada una de las otras ediciones).
+Los fondos de pantalla lisos, los degradados y los rellenos planos dan resultados mucho
+peores (el 36% de las copias de 38 de ellos), porque una imagen casi uniforme no tiene
+puntos que coincidan ni una huella estable. Los demás archivos devueltos eran, en una
+muestra revisada a mano, imágenes relacionadas que ya estaban en el caso: versiones de la
+misma página, el mismo mapa con distintas capas, versiones clara y oscura de un mismo
+ícono.</p>
+
+<h3 id="similarcontent">Buscar similares: contenido similar</h3>
+<p>Las copias son un tipo de similitud. El otro es el <strong>contenido similar</strong>:
+otras fotos de la misma persona, lugar, objeto o escena, y otros dibujos del mismo
+personaje, donde los píxeles son totalmente distintos. Con el índice de contenido
+construido, Buscar similares los lista después de las copias, ordenados, cada uno con una
+insignia <strong>&asymp; N%</strong>; el control deslizante <strong>similar desde</strong>
+del aviso define cuán parecido debe ser un archivo para listarse (70% por defecto).</p>
+<p>Esto usa un modelo de comprensión de imágenes, <strong>DINOv2-small</strong> (Meta AI,
+Apache-2.0), que viene con GLEAPP y se ejecuta en el equipo: nada sale a internet.</p>
+<p>El índice de contenido se construye después del índice de copias. Lee las miniaturas, no
+la evidencia, y se puede detener y retomar donde quedó. Cada imagen se describe una sola vez,
+sin importar cuántas copias exactas tenga el caso; las imágenes de menos de 128 píxeles
+(íconos, cursores, botones) se omiten, y las imágenes propias del sistema operativo y de las
+aplicaciones van al final, así que una búsqueda sobre su material funciona pronto. El modelo
+procesa unas 25 imágenes por segundo en un portátil de 8 núcleos; en un caso de un portátil
+con Windows de 57.406 imágenes quedaron 4.975 por describir, lo que tardó 4 minutos 16
+segundos (todas habrían tardado unos 40 minutos), y en dos casos de teléfono quedaron 15.346
+de 27.188 y 19.888 de 33.109.</p>
+<p>Medido en un caso real de portátil, 93 imágenes en 9 grupos etiquetados a mano entre
+otras 5.000 imágenes del caso: los demás miembros de cada grupo aparecieron primero para la
+silla (las 10 fotos, desde todos los ángulos), un personaje de stickers en 25 poses
+distintas, una foto de equipo tomada de tres maneras y 16 renders de una habitación. Los
+puntajes varían según el sujeto (las fotos de la silla puntuaron de 0,70 a 0,85 entre sí, las
+poses del sticker de 0,88 a 0,91), por eso los resultados se ordenan y el corte lo define
+usted.</p>
+
+<h2 id="screening">10. Detección de rostros / piel</h2>
+<p>La detección ejecuta la red neuronal de detección de rostros <strong>YuNet</strong> (un
+pequeño modelo ONNX incluido, mediante OpenCV) sobre cada miniatura y registra la cantidad
+de rostros, además de una <strong>proporción de tono de piel</strong> (la fracción de
+píxeles en un rango de color de piel). Ejecútela en la ingesta, o después con
+<strong>Ejecutar detección de rostros / piel</strong> en la sección <em>Rostros y piel</em>.
+Son señales de triaje para ayudarle a priorizar: no son un clasificador y no emiten ningún
+juicio sobre el contenido.</p>
+<p><strong>Buscar rostros coincidentes.</strong> Cuando la detección además generó el
+vector de un rostro con el modelo incluido <strong>SFace</strong>, el recuadro de ese rostro
+en el visor a tamaño completo (o en la tira de fotogramas clave de un video en el panel de
+detalles) se puede pulsar: haga clic para listar cada archivo con un rostro coincidente. Los
+resultados reemplazan la galería igual que <em>Buscar similares</em>, con un aviso y
+<strong>Volver a todos</strong>. Un rostro dibujado sin vector no se puede pulsar. La
+comparación se ejecuta por completo dentro del caso.</p>
+
+<h2 id="knownhash">11. Comparación con hashes conocidos y NSRL</h2>
+<p>Una lista de hashes conocidos es un conjunto de hashes que alguien ya identificó. GLEAPP
+compara el SHA-256 de cada archivo, luego el SHA-1, luego el MD5 (exactos) y luego su pHash
+(perceptual, dentro de un umbral) con:</p>
+<ul>
+  <li><strong>los conjuntos de hashes del caso</strong>: importados en este caso;</li>
+  <li>el <strong>almacén global</strong>: <code>%LOCALAPPDATA%\GLEAPP\hashsets\</code>,
+  compartido por todos los casos, donde residen grandes conjuntos de referencia como el NSRL
+  RDS.</li>
+</ul>
+<p>Un archivo vacío (de cero bytes) nunca coincide por sus hashes. Todos los archivos vacíos
+tienen el mismo MD5, SHA-1 y SHA-256, así que no distinguen un archivo de otro. GLEAPP los
+deja fuera de cada lista que importa, en un caso o en el almacén global, los mantiene fuera
+de su reserva de hashes y nunca los busca. Un conjunto importado en un caso antes de que
+GLEAPP los dejara fuera puede contenerlos todavía: <strong>Volver a comprobar</strong> quita
+la marca a un archivo vacío que ese conjunto marcó, y una categoría que el archivo tomó de esa
+coincidencia se mantiene hasta que usted la cambie.</p>
+<p><strong>Tipos</strong> de conjunto:</p>
+<table>
+  <tr><td><strong>known</strong> (conocido)</td><td>relevante / malicioso. Una coincidencia muestra la insignia azul HASH (STASH en violeta para su <a href="#stash">reserva local de hashes</a>) y, si el archivo no tiene categoría y el conjunto indica una, la adopta.</td></tr>
+  <tr><td><strong>known-good</strong> (conocido benigno)</td><td>benigno (NSRL, archivos del sistema operativo y de apps). Una coincidencia muestra la insignia verde NSRL, se <strong>categoriza automáticamente como Non-pertinent</strong> si no tiene categoría, y se puede ocultar con "Ocultar NSRL conocidos". Nunca reemplaza una categoría que usted haya asignado.</td></tr>
+  <tr><td><strong>other</strong> (otro)</td><td>solo informativo.</td></tr>
+</table>
+
+<p><strong>¿Cuál uso?</strong></p>
+<table>
+  <tr><th>Quiero...</th><th>Use</th><th>Lea</th></tr>
+  <tr><td>Marcar archivos de un CyberTip u otra lista puntual, solo en este caso</td><td><strong>Importar conjunto de hashes...</strong> en la sección <em>Hashes conocidos</em> de la barra lateral</td><td><em>Importar un conjunto de hashes en un caso</em></td></tr>
+  <tr><td>Comparar cada caso con un conjunto de hashes de Project&nbsp;VIC</td><td><strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr; Conjuntos de hashes de Project&nbsp;VIC</strong></td><td><em>Conjuntos de hashes de Project VIC</em></td></tr>
+  <tr><td>Ocultar archivos del sistema operativo y de las apps</td><td>Importe el NSRL: <strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr; Datos de referencia (NSRL)</strong></td><td><em>Configurar el NSRL RDS</em></td></tr>
+  <tr><td>Comparar con archivos que categoricé 1&ndash;3 en casos anteriores</td><td>La <a href="#stash">reserva local de hashes</a></td><td>&sect;12</td></tr>
+  <tr><td>Volver a comparar sin reprocesar</td><td><strong>Volver a comprobar</strong></td><td><em>Importar un conjunto de hashes en un caso</em></td></tr>
+</table>
+
+<h3>Importar un conjunto de hashes en un caso (p. ej., un CyberTip)</h3>
+<p>Barra lateral &rarr; <strong>Hashes conocidos</strong> &rarr; <strong>Importar conjunto
+de hashes...</strong>. Se abre un explorador de archivos; elija el archivo del CyberTip.
+GLEAPP completa un nombre a partir del nombre del archivo (edítelo, p. ej.,
+<code>CyberTip 12345678</code>); elija <strong>Marcar como relevante</strong>
+(predeterminado, insignia azul HASH) o <em>Marcar como benigno</em>; haga clic en
+<strong>Importar y marcar</strong>. GLEAPP carga los hashes, vuelve a comprobar cada archivo
+y lleva la galería a las coincidencias. Cada conjunto importado se lista debajo del botón
+con su cantidad de entradas / coincidencias y una <strong>&times;</strong> para quitarlo
+(quitarlo borra sus marcas). Use <strong>Mostrar &rarr; Solo: &lt;nombre&gt;</strong> para
+ver las coincidencias de un conjunto, o <strong>Cualquier conjunto de hashes
+importado</strong> para todas; las coincidencias también aparecen en el informe.</p>
+<p>Se acepta: una <strong>lista MD5 / SHA-1 / SHA-256</strong> simple (uno por línea, o
+<code>hash,category</code>), un <strong>CSV / TSV</strong>, un <strong>JSON de
+Project&nbsp;VIC</strong> o una exportación de <strong>CAID</strong>, en UTF-8 o ASCII, o en
+UTF-16 que empiece con una marca de orden de bytes (la que escribe Windows PowerShell 5.1
+con <code>&gt;</code> y <code>Out-File</code>). La comparación no distingue mayúsculas. Las
+líneas en blanco se ignoran. Una línea sin MD5, SHA-1 ni SHA-256 en su primera columna, como
+una fila de encabezado, se omite, y el mensaje posterior a la importación dice cuántas líneas
+se omitieron.</p>
+<p>Un archivo <strong>sin ningún hash para importar</strong> se rechaza indicando el motivo,
+y no se agrega nada al caso: una imagen u otro archivo binario, un CSV cuya primera columna
+no contiene hashes, un archivo vacío, una lista JSON cuyos registros no traen ninguno, una
+lista que solo contiene los hashes de un archivo vacío, o un script SQL, como el
+<code>.schema.sql</code> de un zip del NSRL. Un conjunto que ya está en el caso con ese
+nombre queda como estaba.</p>
+<p>Aquí no se acepta una <strong>base de datos de hashes SQLite</strong>, como el NSRL RDS.
+GLEAPP lee los primeros bytes del archivo, sea cual sea su nombre, y lo rechaza con un
+mensaje que lo dirige al almacén global (abajo), que contiene un conjunto de referencia una
+sola vez para todos los casos. No se agrega nada al caso.</p>
+<p><strong>Volver a comprobar</strong> (junto a <em>Importar conjunto de hashes...</em>)
+vuelve a comparar con todos los conjuntos cargados: los del caso, el almacén global y la
+reserva local de hashes, sin un reprocesamiento completo.</p>
+<p>El <strong>almacén global</strong> contiene una sola vez grandes conjuntos de referencia
+como el NSRL RDS, compartidos por todos los casos, en
+<code>%LOCALAPPDATA%\GLEAPP\hashsets\</code> (macOS
+<code>~/Library/Application&nbsp;Support/GLEAPP/hashsets/</code>, Linux
+<code>~/.config/GLEAPP/hashsets/</code>). Adminístrelo desde <strong>&#9776; Menú &rarr;
+Referencia &rarr; Datos de referencia (NSRL)</strong>, o desde la línea <strong>Hashes
+conocidos &rarr; "Datos de referencia: ... &#x25b8;"</strong> de la barra lateral, que abre
+un diálogo que lista los conjuntos importados (cada uno con una <strong>&#x2715;</strong>
+para quitarlo) y un formulario <strong>Agregar un conjunto</strong>. Acepta un
+<code>.db</code> SQLite, como una versión del NSRL, un <code>_delta.sql</code> del NSRL
+combinado sobre el <code>.db</code> completo anterior, un JSON de Project&nbsp;VIC, un JSON
+de CAID o una lista de hashes. (La línea de comandos <code>gleapp hashset --global ...</code>
+hace lo mismo, desde una instalación del código fuente.)</p>
+<p>Cada conjunto muestra su cantidad de hashes cuando termina su importación. Hasta
+entonces muestra <strong>importando&hellip;</strong>. Un conjunto cuya importación se detuvo
+a mitad de camino, porque se cerró GLEAPP o la importación terminó con un error, muestra
+<strong>incompleto: agréguelo otra vez</strong>: puede contener solo parte del archivo, y los
+casos se siguen comparando con lo que contiene. Agregue el mismo archivo otra vez con el mismo
+nombre para reemplazarlo. (Otra ventana de GLEAPP que esté importando un conjunto también
+hace que se vea incompleto en esta hasta que termine esa importación.)
+<code>gleapp hashset --list</code> indica lo mismo.</p>
+<p>Un archivo sin ningún hash para importar también se rechaza aquí, antes de escribir nada,
+así que un conjunto ya guardado con ese nombre queda como estaba. El diálogo indica el motivo
+antes de que empiece la importación y queda abierto, salvo para una base de datos SQLite,
+que se comprueba a medida que se importa. Un script SQL elegido solo, como el
+<code>.schema.sql</code> que está junto al <code>.db</code> en un zip del NSRL, se rechaza
+indicando el archivo que hay que elegir. Después de una importación, el mensaje dice cuántas
+líneas de una lista se omitieron. <strong>Almacén</strong>, en el formulario
+<strong>Agregar un conjunto</strong>, elige qué hashes leer de una base de datos SQLite y no
+se aplica a una lista de texto o JSON. En la línea de comandos, <code>--algos</code> y
+<code>--table</code> se rechazan para un archivo que no es una base de datos SQLite.</p>
+
+<h3>Conjuntos de hashes de Project VIC</h3>
+<p>Un conjunto de hashes de Project&nbsp;VIC, como el que distribuye un portal VICS
+nacional, es un único archivo JSON cuyos registros traen un MD5 y pueden traer un SHA-1, un
+valor PhotoDNA y la categoría que asignó Project&nbsp;VIC.</p>
+
+<p><strong>Importarlo</strong></p>
+<ul>
+  <li><strong>Desde el menú:</strong> <strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr;
+    Conjuntos de hashes de Project&nbsp;VIC</strong> (también en el menú del lanzador). Tiene
+    su propio diálogo y su propia lista, separados de los del NSRL, y usa el mismo almacén
+    compartido: el conjunto no se copia en ningún caso, y todos los casos se comparan con
+    él.</li>
+  <li><strong>Desde el diálogo del NSRL:</strong> <strong>Datos de referencia ... &#x25b8;
+    &rarr; Agregar un conjunto &rarr; Elegir...</strong> el <code>.json</code>, para que todos
+    los casos se comparen con él. Elegir un <code>.json</code> cambia <strong>Tratar las
+    coincidencias como</strong> a <em>Relevantes</em> y oculta la elección entre versión
+    completa/delta y <strong>Almacén</strong>, que se aplican al NSRL y no a este
+    archivo.</li>
+  <li><strong>Línea de comandos:</strong> <code>gleapp hashset &lt;file&gt;.json --global
+    --name "&lt;a name&gt;"</code>.</li>
+  <li><strong>Solo en un caso:</strong> <strong>Importar conjunto de hashes...</strong> lo
+    guarda solo dentro del archivo de ese caso. El almacén global es el lugar para un
+    conjunto con el que deben compararse todos los casos.</li>
+</ul>
+
+<p><strong>Qué hace una coincidencia</strong></p>
+<ul>
+  <li><strong>Una coincidencia se marca <span class="tag" style="background:#d9822b">VIC</span>.</strong>
+  Si el archivo aún no tiene categoría, pasa a la categoría que le asignó Project VIC (por
+  ejemplo 0 Non-pertinent, 1 CAM, 2 Child Exploitative, 3 CGI). Una categoría que usted haya
+  asignado nunca se reemplaza. El cambio no es silencioso: el archivo lleva la marca VIC, y la
+  fila <em>Coincide en</em> del panel de detalles nombra el conjunto y la categoría que
+  indicó.</li>
+  <li><strong>Un archivo que está en más de un lugar conserva todas las marcas.</strong> Un
+  archivo que está en un conjunto de Project VIC y en su reserva de hashes muestra tanto
+  <span class="tag" style="background:#d9822b">VIC</span> como <span class="tag"
+  style="background:#7c4dff">STASH</span>. Si los dos no coinciden en la categoría, se toma
+  el código más bajo, el más grave; Non-pertinent (0) queda por debajo de cualquier otra
+  categoría. Un archivo que está en el NSRL y en un conjunto relevante nunca se convierte en
+  Non-pertinent.</li>
+  <li><strong>Encontrarlos:</strong> <em>Hashes conocidos &rarr; Mostrar</em>, en la barra
+  lateral, tiene <em>coincidencias de Project VIC</em>, <em>coincidencias de la reserva de
+  hashes</em> y <em>coincidencia en ambos</em>. Los informes HTML, CSV y JSON traen un campo
+  <em>Hash matches</em> que dice dónde coincidió cada archivo.</li>
+</ul>
+
+<p><strong>Reglas de importación</strong></p>
+<ul>
+  <li><strong>Impórtelo como relevante, nunca como benigno.</strong> Cada entrada trae su
+  propia categoría, así que un archivo sin categoría que coincide toma la categoría que le
+  asignó Project VIC. Como <em>known-good</em>, cada coincidencia llevaría la insignia de
+  benigno y una coincidencia sin categoría pasaría a Non-pertinent, así que GLEAPP rechaza
+  esa combinación para un conjunto de hashes de Project VIC, tanto en el diálogo como en la
+  línea de comandos.</li>
+  <li><strong>El archivo se lee a medida que se importa, nunca se carga entero.</strong> Las
+  entradas se preparan y se ordenan antes de escribirse, así que mientras se ejecuta la
+  importación necesita espacio libre en disco además del almacén terminado. El progreso
+  aparece en <em>Hashes conocidos</em>.</li>
+  <li><strong>Un valor que aparece más de una vez en un conjunto se guarda una sola
+  vez</strong>, conservando la categoría de la primera entrada, así que la cantidad de
+  PhotoDNA de un conjunto puede ser menor que la cantidad de campos PhotoDNA del archivo: un
+  valor PhotoDNA puede repetirse en entradas con MD5 distintos.</li>
+  <li><strong>Qué se conserva:</strong> los valores MD5, SHA-1, SHA-256 y PhotoDNA, salvo los
+  hashes de un archivo vacío.</li>
+  <li><strong>Un archivo que termina a mitad de camino, como una descarga truncada, hace
+  fallar la importación</strong> y no deja ningún conjunto parcial, porque un conjunto
+  parcial se leería como completo.</li>
+  <li><strong>Volver a importar con un nombre que el almacén ya tiene reemplaza ese
+  conjunto.</strong> Sus entradas anteriores se borran al empezar la nueva importación, así
+  que si el archivo nuevo falla a mitad de camino, ese nombre desaparece hasta que se importe
+  un archivo completo. Un archivo sin ningún hash se rechaza antes de empezar la importación,
+  y el conjunto queda como estaba.</li>
+  <li><strong>No es evidencia para ingestar.</strong> Un conjunto de hashes no tiene archivos
+  de medios, así que buscar el JSON en el lanzador, o <code>gleapp ingest</code>, indica que
+  es un conjunto de hashes y lo dirige aquí, en lugar de leer el archivo.</li>
+</ul>
+
+<p><strong>Datos que acompañan a una coincidencia</strong></p>
+<p>Los datos de cada registro se conservan con el conjunto y se trasladan a los archivos que
+coinciden con él. Son el registro de la organización que lo distribuye, no conclusiones de
+GLEAPP.</p>
+<table>
+  <tr><th>Dato</th><th>Notas</th></tr>
+  <tr><td><strong>MediaID, Series, Tags</strong></td><td>Se conservan con el conjunto y se muestran en el archivo coincidente.</td></tr>
+  <tr><td><strong>Cinco marcas</strong></td><td>Víctima identificada, Agresor identificado, Distribuido, Sospechoso, Autogenerado. El campo de marcas lista las que el registro tiene en verdadero y dice <em>ninguna marcada</em> cuando todas las que trae son falsas. El artefacto de LAVA muestra cada marca como sí o no, y vacía cuando el registro no la trae.</td></tr>
+  <tr><td><strong>Exif</strong></td><td>Se muestra solo como texto. El modelo de Project VIC 2.0 asocia cada fila Exif al MD5 de su registro, así que es el registro de ese archivo según el conjunto, no una lectura de GLEAPP. Una ubicación incluida nunca se escribe en las coordenadas del archivo coincidente, ni se dibuja en un mapa, ni se coloca en un KMZ. Se conservan el nombre de propiedad y el valor de cada fila, en el orden almacenado; no se conservan una fila sin nombre de propiedad ni un valor PropertyGroup.</td></tr>
+  <tr><td><strong>Cuándo llegan</strong></td><td>Solo con una coincidencia de SHA-256, SHA-1 o MD5. Una coincidencia perceptual es una imagen similar y no trae ninguno.</td></tr>
+  <tr><td><strong>Conjuntos anteriores</strong></td><td>Un conjunto importado antes de que GLEAPP conservara estos datos coincide como antes, pero no muestra ninguno hasta que se vuelva a importar.</td></tr>
+</table>
+
+<p><strong>Dónde se muestran los datos</strong></p>
+<table>
+  <tr><th>Dónde</th><th>Qué se muestra</th></tr>
+  <tr><td><strong>Panel de detalles</strong></td><td>Los datos del registro, con el Exif en <em>Exif de VIC, tal como se registró</em></td></tr>
+  <tr><td><strong>Informe HTML</strong></td><td>Campos debajo de cada imagen: <em>VIC record MediaID</em>, <em>VIC series</em>, <em>VIC flags</em>, <em>VIC tags</em>, <em>VIC Exif (as recorded)</em></td></tr>
+  <tr><td><strong>Exportaciones CSV y JSON</strong></td><td>Los datos</td></tr>
+  <tr><td><strong>Informe LAVA</strong></td><td>El artefacto <em>Project VIC Hash-Set Matches</em></td></tr>
+</table>
+<p>En el panel de detalles, el informe HTML y el CSV, un archivo importado de una
+exportación de caso de Project VIC muestra su propia serie, marcas y etiquetas cuando las
+tiene, antes que las de cualquier registro de conjunto de hashes con el que coincida. La
+exportación JSON conserva ambos, y el artefacto de LAVA muestra el del registro del
+conjunto.</p>
+
+<p><strong>Mantener pequeño un informe HTML</strong></p>
+<ul>
+  <li>Desmarque cualquiera de esos campos en <strong>Campos debajo de cada imagen</strong>
+  para dejarlos fuera de un informe.</li>
+  <li><strong>Coincidencias de Project VIC</strong>, en <strong>Qué archivos</strong> (aparece
+  cuando un caso tiene alguna), las conserva (predeterminado), informa solo esas, o las deja
+  fuera, y reduce la elección de <strong>Qué archivos</strong> que esté seleccionada.</li>
+  <li>El CSV, el JSON, el KMZ, la lista MD5 y el informe LAVA de la misma exportación siguen
+  la misma elección. La exportación JSON de Project VIC no se reduce por ella.</li>
+  <li>Desde la línea de comandos: <code>gleapp report --vic-matches only|exclude</code> y
+  <code>--no-vic-details</code>.</li>
+</ul>
+
+<h3>PhotoDNA se almacena, no se compara</h3>
+<p>Una lista de Project&nbsp;VIC o de CAID suele traer un valor <strong>PhotoDNA</strong>
+junto a los hashes criptográficos.</p>
+<ul>
+  <li>PhotoDNA es un hash robusto de 144 bytes, no el hash perceptual de 64 bits que calcula
+    GLEAPP, así que no se pueden comparar entre sí. Comparar dos valores PhotoDNA requiere una
+    implementación licenciada de PhotoDNA, que GLEAPP no incluye.</li>
+  <li>Esas entradas se guardan con su propio algoritmo <code>photodna</code>, para que el
+    total de un conjunto diga lo que realmente contenía la lista, y la comparación lee solo
+    las entradas <code>phash</code>. <strong>Una entrada PhotoDNA nunca puede marcar un
+    archivo.</strong></li>
+  <li>La cantidad se indica dondequiera que esté el conjunto: después de una importación con
+    <code>gleapp hashset</code> y en <code>gleapp hashset --list</code>, en la fila del
+    conjunto en la barra lateral (una nota "N PhotoDNA, sin comparar"), en el registro de
+    auditoría del caso y como la columna <em>PhotoDNA (not matched)</em> de la tabla Known Hash
+    Sets de la exportación LAVA. Los hashes con los que una lista puede coincidir realmente son
+    su cantidad de entradas menos su cantidad de PhotoDNA.</li>
+</ul>
+
+<h3>Configurar el NSRL RDS</h3>
+<p>El <strong>National Software Reference Library Reference Data Set (RDS)</strong> es el
+catálogo público del NIST con hashes de software conocido: sistemas operativos,
+aplicaciones y los archivos que traen. Comparar su evidencia con él le permite
+<em>descartar</em> el ruido del sistema operativo y de las apps y concentrarse en el
+contenido del usuario. GLEAPP no lo incluye; usted lo descarga del NIST y lo importa una
+vez.</p>
+<p><strong>En resumen:</strong> descárguelo del NIST, importe la versión completa una vez,
+combine un delta cada trimestre y luego use <strong>Volver a comprobar</strong> en un
+caso.</p>
+
+<p><strong>1. Descargarlo del NIST.</strong> <code>https://www.nsrl.nist.gov/</code>
+&rarr; "Current RDS Hash Sets", que enlaza los zip (se descargan desde
+<code>s3.amazonaws.com</code>). Cuatro conjuntos: <strong>Modern</strong> (software de
+escritorio/portátil; úselo para computadoras), <strong>Android</strong>, <strong>iOS</strong>
+y <strong>Legacy</strong> (software anterior a 2000; omítalo salvo que trabaje con sistemas
+antiguos). Cada conjunto publica una vez al año una base <code>.db</code> SQLite
+<strong>completa</strong> (<code>RDS_YYYY.03.x_&lt;set&gt;.zip</code>) y un
+<strong>delta trimestral</strong> (<code>RDS_YYYY.MM.x_&lt;set&gt;_delta.zip</code>, un
+<code>&lt;set&gt;_delta.sql</code> con los cambios desde entonces). Descomprima lo que
+descargue, y compruebe antes el espacio libre: el <code>.db</code> de 2026.03.1 ocupa
+descomprimido 47&nbsp;GB para Android, 59&nbsp;GB para iOS, 135&nbsp;GB para Legacy y
+457&nbsp;GB para Modern (los tamaños que registra cada zip). Los zip completos y delta
+también contienen un <code>.schema.sql</code>, el esquema de la base de datos; GLEAPP no lo
+necesita y lo rechaza si se elige en lugar del <code>.db</code>. Los cuatro conjuntos
+también vienen como una base <em>minimal</em> más pequeña: un
+<code>RDS_YYYY.MM.x_&lt;set&gt;_minimal.zip</code> completo y actualizaciones trimestrales
+<code>RDS_YYYY.MM.x_&lt;set&gt;_minimal_delta.zip</code>, según la página <em>Current RDS
+Hash Sets</em> del NIST. Tiene menos filas de archivos (el <code>.db</code> de 2026.03.1
+ocupa descomprimido 40&nbsp;GB para Android y 182&nbsp;GB para Modern) pero las mismas
+columnas <code>md5</code>, <code>sha1</code> y <code>sha256</code>, y para cada conjunto de
+2026.03.1 el readme del NIST cuenta tantos valores SHA-256 distintos en la base minimal como
+en la completa. Se importa de la misma manera, con la misma opción de
+<strong>Almacén</strong>.</p>
+
+<p><strong>2. Primera importación (una versión completa).</strong> <strong>&#9776; Menú
+&rarr; Referencia &rarr; Datos de referencia (NSRL)</strong>, luego <strong>Agregar un
+conjunto</strong>: deje seleccionada <strong>Versión completa</strong>, use
+<strong>Elegir...</strong> para el <code>.db</code> descomprimido, edite el
+<strong>Nombre</strong> si quiere (p. ej., <code>NSRL Modern 2026.03.1</code>), deje
+<strong>Tratar las coincidencias como</strong> en <em>Benignas: NSRL / conocidas como
+benignas</em> y <strong>Almacén</strong> en <em>Solo MD5</em>, y haga clic en
+<strong>Importar</strong>. Se ejecuta en segundo plano (un conjunto completo son decenas de
+millones de hashes): el progreso aparece en <em>Hashes conocidos</em>, y puede seguir
+trabajando. Repita para Android / iOS. Después, el <code>.db</code> de origen se puede mover
+o eliminar; GLEAPP no vuelve a leerlo, <em>salvo</em> que lo conserve como base para el
+siguiente delta.</p>
+
+<p><strong>3. Actualización trimestral (un delta).</strong> Un delta se combina sobre el
+<code>.db</code> <em>completo anterior</em> del mismo conjunto (la base nunca se modifica).
+Una base minimal se actualiza de la misma manera, con su
+<code>&lt;set&gt;_minimal_delta.sql</code> sobre el <code>.db</code> minimal anterior; el
+documento RDSv3 del NIST indica actualizar una base minimal solo con un delta minimal del
+mismo conjunto. En <strong>Agregar un conjunto</strong> elija <strong>Delta
+trimestral</strong>, elija el <code>_delta.sql</code> y el <code>.db</code> que conservó,
+póngale el nombre del nuevo trimestre e <strong>Importar</strong>. GLEAPP escribe el
+<code>.db</code> combinado junto a la base. Quite el conjunto del trimestre anterior con su
+<strong>&#x2715;</strong>; conserve el <code>.db</code> combinado como base para el
+siguiente delta. Cada año, empiece de nuevo desde la nueva versión completa de marzo.</p>
+
+<p><strong>4. Usarlo.</strong> Abra un caso y haga clic en <strong>Volver a
+comprobar</strong> en <em>Hashes conocidos</em> (o vuelva a ejecutar el procesamiento). Las
+coincidencias del NSRL reciben la insignia verde <span class="tag"
+style="background:#2f6e4f">NSRL</span>, se categorizan automáticamente como
+<strong>Non-pertinent</strong> si aún no tienen categoría, y salen de la vista cuando marca
+<strong>Ocultar NSRL conocidos</strong>.</p>
+
+<p class="muted"><strong>Deltas y SQLite:</strong> combinar un delta requiere SQLite. GLEAPP
+tiene una alternativa incorporada, así que funciona desde la aplicación compilada sin
+instalar nada; si la herramienta de línea de comandos <code>sqlite3</code> está en su PATH
+(o junto a <code>GLEAPP.exe</code>), se usa en su lugar y es más rápida con scripts muy
+grandes.</p>
+
+<h2 id="stash">12. Reserva local de hashes</h2>
+<p>La <strong>reserva local de hashes</strong> es su propio conjunto de hashes conocidos
+reutilizable, construido a partir de su trabajo: los <strong>hashes MD5</strong> de los
+archivos que categoriza como <strong>1&nbsp;CAM</strong>,
+<strong>2&nbsp;Child&nbsp;Exploitative</strong> o <strong>3&nbsp;CGI/Animation</strong>,
+cada uno guardado con su código de categoría, una vez que los agrega con <strong>Agregar los
+hashes de este caso a la reserva</strong> (abajo). Compárela con un caso nuevo y los archivos
+que ya identificó se vuelven a marcar automáticamente.</p>
+<p>Es <strong>un archivo propio, separado del almacén NSRL / global</strong>:
+<code>%LOCALAPPDATA%\GLEAPP\hashsets\stash.hstash</code>, un pequeño archivo SQLite (una
+tabla <code>stash</code> con <code>md5, category, added_at, source</code>). Su extensión no
+es <code>.gleapp</code> a propósito, para que nunca se confunda con un archivo de caso en el
+disco. GLEAPP sigue sin incluir ninguna base de hashes y no toma ninguna decisión sobre el
+contenido; la reserva contiene solo hashes de archivos que <em>usted</em> categorizó.</p>
+
+<h3>Crearla / agregarle</h3>
+<ol>
+  <li>Trabaje un caso como de costumbre: categorice archivos con los códigos 1, 2 y 3.</li>
+  <li>Haga clic en <strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr; Reserva&nbsp;de&nbsp;hashes</strong>.
+    El panel muestra cuántos archivos de este caso son elegibles (categoría 1–3, con un MD5
+    distinto del de un archivo vacío) y los totales actuales de la reserva.</li>
+  <li>Haga clic en <strong>Agregar los hashes de este caso a la reserva</strong>. Cada MD5
+    elegible se guarda con su código y el nombre del caso como nota de origen. El archivo de
+    la reserva se crea la primera vez.</li>
+  <li>Repita en otros casos. Volver a ejecutar <strong>Agregar</strong> en el mismo caso
+    incorpora lo categorizado desde entonces; un hash ya guardado con otro código conserva el
+    <strong>más grave</strong> (el más bajo).</li>
+</ol>
+
+<h3>Usarla en otros casos</h3>
+<ul>
+  <li>Se comprueba automáticamente durante la etapa de comparación con hashes conocidos de
+    cada caso que procese, salvo que haya desactivado <em>Activar la comparación con la
+    reserva de hashes</em> (en la ingesta) o <em>Comparar con mi reserva de hashes</em> (barra
+    lateral) para ese caso; no hay nada que importar.</li>
+  <li>Para un caso procesado <em>antes</em> de guardar esos hashes en la reserva: ábralo y
+    haga clic en <strong>Volver a comprobar</strong> (barra lateral → <em>Hashes
+    conocidos</em>).</li>
+  <li>Una coincidencia muestra la insignia violeta <span class="tag"
+    style="background:#7c4dff">STASH</span>. Un archivo sin categoría adopta el código
+    guardado; una categoría que ya asignó nunca se reemplaza. Las coincidencias de la reserva
+    se comprueban <strong>antes</strong> que las del NSRL, así que gana su propia
+    decisión.</li>
+</ul>
+
+<h3>Compartirla con otros examinadores</h3>
+<p>La sección <em>Compartir</em> del panel Reserva de hashes:</p>
+<table>
+  <tr><td><strong>Exportar una copia de seguridad...</strong></td><td>escribe un
+    <code>hash-stash-&lt;date&gt;.hstash</code> portátil en
+    <code>%LOCALAPPDATA%\GLEAPP\hashsets\</code>; entrégueselo a un colega</td></tr>
+  <tr><td><strong>Exportar CSV...</strong></td><td>lo mismo, como un CSV
+    <code>md5,category,source</code></td></tr>
+  <tr><td><strong>Combinar una reserva de hashes externa...</strong></td><td>incorpora otra
+    reserva <code>.hstash</code> o <code>.csv</code> a la suya (una exportación anterior con
+    nombre <code>.gleapp</code> también funciona); en cualquier hash que se superponga gana el
+    código más grave</td></tr>
+  <tr><td><strong>Usar una reserva de hashes compartida...</strong></td><td>apunta GLEAPP a un
+    archivo de reserva en una unidad compartida / de red; todo el equipo lee y escribe la misma
+    reserva</td></tr>
+  <tr><td><strong>Volver a la mía</strong></td><td>vuelve a su <code>stash.hstash</code> de
+    usuario (el archivo compartido no se toca)</td></tr>
+</table>
+<p>La ubicación también se puede definir con la variable de entorno
+<code>GLEAPP_STASH_PATH</code> (tiene prioridad sobre el ajuste del panel). <strong>Vaciar la
+reserva...</strong> borra todas las entradas de todos los casos y <strong>no se puede
+deshacer</strong>.</p>
+
+<h3>Línea de comandos</h3>
+<pre><code>gleapp stash                       # totals + file location
+gleapp -c &lt;case dir&gt; stash --add    # add that case's category 1-3 MD5s
+gleapp stash --export stash.hstash # portable copy  (.csv also works)
+gleapp stash --merge theirs.hstash # fold in a colleague's stash
+gleapp stash --set-path "\\nas\team\stash.hstash"
+gleapp stash --set-path ""         # back to the per-user default
+gleapp stash --clear</code></pre>
+<p>En orden: totales y ubicación del archivo; agregar los MD5 de categoría 1-3 de ese caso;
+copia portátil (también sirve <code>.csv</code>); incorporar la reserva de un colega; usar
+un archivo compartido; volver al predeterminado de usuario; vaciar la reserva.</p>
+
+<h2 id="formats">13. Manejo de formatos</h2>
+<h3>Qué decodifica GLEAPP</h3>
+<p>Además de JPEG/PNG/GIF/WebP/BMP/TIFF comunes y video, GLEAPP decodifica:</p>
+<ul>
+  <li><strong>HEIC / HEIF</strong> (fotos de iPhone) y <strong>TIFF / DNG</strong>: se
+  convierten a JPEG para mostrarlos.</li>
+  <li><strong>Texturas de GPU KTX de iOS</strong>: capturas del selector de apps de
+  SplashBoard y otras texturas de Apple, incluidas las variantes comprimidas con LZFSE y las
+  segmentadas <code>AAPL</code>.</li>
+  <li><strong>Archivos de caché de apps sin extensión</strong>: se identifican por sus bytes
+  mágicos (p. ej., la caché <code>SCContent</code> de Snapchat nombra los archivos por hash,
+  sin sufijo).</li>
+  <li><strong>Paquetes <code>LZC</code> de Snapchat</strong>: contenedores Zstandard; la
+  imagen o el video incrustado se extrae a <code>extracted/</code> y se muestra.</li>
+  <li><strong>Archivos comprimidos encontrados dentro de un origen</strong>: vea la sección
+  siguiente.</li>
+  <li><strong>Cachés de medios de ExoPlayer</strong>: los fragmentos en que la caché de video
+  de una app de Android divide un video se vuelven a unir en un solo archivo; vea más
+  abajo.</li>
+</ul>
+
+<h3>Archivos comprimidos encontrados dentro de un origen</h3>
+<p>Un <code>.zip</code>, <code>.tar</code>, <code>.tar.gz</code> (o un <code>.gz</code> /
+<code>.bz2</code> / <code>.xz</code> sueltos, o un <code>.tgz</code> / <code>.tbz2</code> /
+<code>.txz</code>) o <strong>.7z</strong> que esté en una carpeta o en un sistema de archivos
+recorrido de un E01 se abre en la ingesta cuando <em>Expandir los archivos comprimidos
+encontrados en los orígenes</em> está marcado. Se siguen los archivos comprimidos anidados
+dentro de otros.</p>
+<ul>
+  <li>Sus miembros de imagen y video se escriben en <code>extracted/&lt;id&gt;/</code> y se
+  registran como filas comunes, con el nombre <code>&lt;archive&gt;/&lt;member&gt;</code>,
+  vinculadas a su contenedor.</li>
+  <li><strong>El archivo contenedor en sí no aparece en la galería ni en los
+  informes</strong>; ponga el filtro Tipo en <em>Archivos comprimidos</em> para ver la lista.
+  Sigue estando en el caso (con su propio nombre, ruta, fechas y hashes), así que un informe
+  de ese alcance puede dar cuenta de cada archivo comprimido de la evidencia.</li>
+  <li><strong>RAR</strong> se reconoce pero no se abre: GLEAPP no tiene lector de RAR (requiere
+  un binario externo <code>unrar</code> que una compilación autónoma no puede llevar), así que
+  la fila del contenedor se marca para que sepa que debe extraerlo por separado.</li>
+  <li>Los miembros cifrados (y los <code>.7z</code> protegidos con contraseña) se omiten y se
+  cuentan.</li>
+  <li>Si estaba desmarcado, o en un caso ingestado antes, use <strong>Expandir archivos
+  comprimidos</strong> en la barra lateral (&sect;16).</li>
+</ul>
+
+<h3>Documentos: PDF, páginas web, MHTML y archivos web</h3>
+<p>Con <em>Extraer medios de documentos</em> marcado en la ingesta, o con <strong>Extraer
+medios de documentos</strong> ejecutado después desde la barra lateral, cada
+<strong>PDF</strong>, página <strong>HTML</strong> (<code>.html</code>, <code>.htm</code>,
+<code>.xhtml</code>), <strong>MHTML</strong> (<code>.mht</code>, <code>.mhtml</code>) y
+<strong>archivo web</strong> de Safari (<code>.webarchive</code>) de los orígenes se conserva
+como contenedor y se registran las imágenes y videos que contiene, con el nombre
+<code>&lt;document&gt;/&lt;item&gt;</code> y vinculados a él. Un PDF sin extensión se
+reconoce por sus primeros bytes. Un documento dentro de un archivo comprimido se abre cuando
+se abre ese archivo comprimido.</p>
+<ul>
+  <li><strong>PDF</strong>: cada imagen del archivo, la dibuje una página o no, y cada archivo
+  adjunto (un video, una foto). Una imagen JPEG o JPEG 2000 se guarda en el PDF como el archivo
+  que era, así que sale <strong>byte por byte</strong> y sus hashes pueden coincidir con un
+  conjunto de hashes conocidos. Cualquier otra imagen se guarda como píxeles; se reconstruye
+  como PNG con el nombre <code>&hellip;_rebuilt.png</code>, y <strong>sus hashes son de
+  GLEAPP, no de un archivo original</strong>. Se lee un PDF cifrado que se abre sin contraseña
+  (solo con la impresión o la copia restringidas). No se extraen las imágenes colocadas en
+  línea dentro de las instrucciones de dibujo de una página.</li>
+  <li><strong>HTML</strong>: imágenes y videos incrustados en la página (direcciones
+  <code>data:</code> en <code>&lt;img&gt;</code>, <code>&lt;video&gt;</code>,
+  <code>srcset</code> y CSS). Un enlace común a <code>photo.jpg</code> no es contenido; ese
+  archivo está junto a la página y se ingesta por sí mismo.</li>
+  <li><strong>MHTML</strong> y <strong>archivos web</strong>: cada imagen y video guardado con
+  la página, con el nombre de la dirección de la que se descargó, además de todo lo
+  incrustado en la propia página. Byte por byte.</li>
+  <li>Se omiten las imágenes de menos de 32 píxeles de lado (íconos, viñetas,
+  espaciadores).</li>
+  <li><strong>Panel de detalles</strong>: <em>Encontrado en</em> nombra el documento,
+  <em>Ubicación dentro</em> dice la página, el adjunto o el recurso guardado, y
+  <em>Copia</em> dice byte por byte o reconstruida. <strong>Mostrar todo lo de este
+  documento</strong> lista lo que salió de él.</li>
+  <li>Los archivos de Office (<code>.docx</code>, <code>.xlsx</code>, <code>.pptx</code>),
+  OpenDocument, EPUB y Pages, Keynote y Numbers de Apple son archivos zip, así que sus imágenes
+  salen con <strong>Expandir archivos comprimidos</strong>, igual que las de un archivo
+  comprimido.</li>
+</ul>
+
+<h3>Cachés de medios de ExoPlayer (Android)</h3>
+<p>Muchas apps de Android reproducen video con ExoPlayer, la biblioteca de medios de Google,
+y guardan lo que transmiten en su caché. Allí un video no es un archivo: se divide en
+fragmentos con el nombre
+<code>&lt;id&gt;.&lt;position&gt;.&lt;timestamp&gt;.v3.exo</code>, repartidos en las
+subcarpetas <code>0</code> a <code>9</code> de la carpeta de la caché, y la dirección de la
+que vino cada video se guarda en un índice aparte, <code>cached_content_index.exi</code> en
+la carpeta de la caché o una tabla en el <code>exoplayer_internal.db</code> de la app. Las
+cachés más antiguas (<code>.v2.exo</code>, <code>.v1.exo</code>, que las apps de Meta aún
+escriben) ponen esa clave en el propio nombre del fragmento.</p>
+<ul>
+  <li><strong>Los fragmentos y los archivos de índice se conservan como contenedores</strong>,
+  sea cual sea el aspecto de sus bytes, así que quedan fuera de la galería y se listan en
+  <em>Fragmentos de caché de apps</em>.</li>
+  <li><strong>Los fragmentos de cada elemento se unen en orden, desde el inicio del elemento,
+  hasta el primer hueco</strong>, en un solo archivo en <code>extracted/exoplayer/</code>, que
+  se procesa como cualquier otro video y se vincula a su primer fragmento.</li>
+  <li>El panel de detalles, el informe, la exportación CSV/JSON y LAVA traen una línea
+  <em>Caché de app</em>: la carpeta de la app, la clave que registró el índice (normalmente la
+  dirección de la que la app lo descargó), los fragmentos y bytes unidos frente a la longitud
+  que registró el índice, y si está <strong>completo</strong>, <strong>parcial</strong>,
+  <strong>se detiene en un hueco</strong> o no tiene longitud registrada. La hora de última
+  escritura o lectura es la que ExoPlayer puso en el nombre del fragmento, según el reloj del
+  dispositivo. La búsqueda encuentra un video por su clave.</li>
+  <li><strong>El archivo unido es de GLEAPP, no del dispositivo.</strong> Su ruta nombra la
+  carpeta de la caché y un nombre que le dio GLEAPP, y ese archivo no existe en el
+  dispositivo. En el panel de detalles, la vista de lista y el informe HTML, su ruta muestra
+  <code>&raquo;</code> en lugar de la última <code>/</code>, seguida de un &#9432; cuya
+  información emergente dice <em>Derivado: no es un archivo del dispositivo</em>.</li>
+  <li>Los fragmentos posteriores a un hueco no se unen, y un elemento sin fragmento en la
+  posición 0 no se une: nada de lo que contiene se puede abrir. Un índice cifrado no nombra
+  nada; los fragmentos se unen igual.</li>
+  <li>Un elemento unido que no es imagen ni video (audio, una lista de reproducción, un
+  manifiesto, bytes no reconocidos) se conserva solo cuando el origen incluye otros
+  archivos.</li>
+  <li><strong>Un flujo DASH se une a partir de su manifiesto.</strong> Cuando está en caché el
+  manifiesto (MPD) que reprodujo la app, GLEAPP une el segmento de inicialización y los
+  segmentos de medios de cada flujo, en el orden del manifiesto, hasta el primero que falte o
+  esté incompleto, en un solo archivo, y <em>Caché de app</em> nombra el manifiesto, el flujo
+  y cuántos de los segmentos listados se unieron. Nunca se unen segmentos cuyas direcciones
+  solo se parecen.</li>
+  <li>El video y el sonido son flujos DASH separados, cada uno unido en su propio archivo; el
+  sonido se conserva por separado cuando el origen incluye otros archivos, y cada uno nombra
+  al otro. Cuando el manifiesto lista un flujo de audio en caché junto a un video, GLEAPP
+  también escribe un archivo con el video y su sonido (<code>exoplayer_av_...mp4</code>), sin
+  recodificar nada: los bytes de cada muestra se copian sin cambios. Con dos o más flujos de
+  audio en caché (dos idiomas), cada uno entra como su propia pista de audio en el orden del
+  manifiesto, marcadas como alternativas y con solo la primera habilitada, y <em>Caché de
+  app</em> lista cada pista con el idioma que el manifiesto declara para ella. Un flujo
+  guardado como un solo archivo (el <code>DASH_720.mp4</code> de Reddit junto a
+  <code>DASH_audio.mp4</code>) nombra el manifiesto que lo lista y los otros flujos en caché
+  que lista, y se combina con su sonido de la misma manera; uno cortado en un hueco no se
+  combina.</li>
+  <li>Un MP4 cuya única pista es sonido se conserva como audio, no como un video sin
+  fotogramas.</li>
+  <li>Los flujos HLS se unen a partir de su lista de reproducción en caché: el segmento de
+  inicialización, luego los segmentos en el orden de la lista, en un solo archivo
+  <code>exoplayer_hls_...</code> (<code>.mp4</code> o <code>.ts</code>). Un video se combina
+  con el audio de su propio grupo AUDIO cuando la lista maestra está en caché; un transport
+  stream ya trae su sonido. Las listas cifradas y por rangos de bytes no se unen, y los
+  subtítulos (WebVTT) se dejan como están.</li>
+</ul>
+<p>Un caso ingestado antes de esta versión no conservó los fragmentos: vuelva a ingestar el
+origen. <strong>Expandir archivos comprimidos</strong> también ejecuta la unión en un caso
+que ya los contiene.</p>
+
+<h3>Archivos auxiliares de macOS (archivos <code>._</code>)</h3>
+<p>Los archivos auxiliares de macOS se reconocen y se dejan fuera.</p>
+<ul>
+  <li><strong>Qué son:</strong> copiar un archivo a una tarjeta FAT o exFAT, o a la mayoría de
+  los recursos de red, hace que macOS escriba al lado un segundo archivo llamado
+  <code>._&lt;name&gt;</code>, con el resource fork y la información del Finder.</li>
+  <li><strong>Por qué parecen imágenes:</strong> toma el nombre completo del archivo al que
+  pertenece, así que <code>._holiday.jpg</code> termina en una extensión de imagen y no
+  contiene ninguna imagen.</li>
+  <li><strong>Qué hace GLEAPP:</strong> comprueba los bytes de cualquier archivo
+  <code>._</code> antes de creer su extensión, y lo clasifica como <strong>otro</strong> en
+  lugar de como una imagen que luego no se puede decodificar. Una tarjeta que estuvo en un Mac
+  trae uno por archivo, así que sin esa comprobación la cantidad de errores parecería
+  evidencia dañada.</li>
+  <li>Una especificación de trabajo que define <code>include_other</code> los conserva todos, y
+  siguen registrados como otro.</li>
+</ul>
+
+<h3>Un archivo dañado no puede detener una ejecución</h3>
+<p>Los decodificadores nativos que pueden fallar con datos mal formados (el video mediante
+OpenCV, las texturas de GPU mediante el decodificador en Rust) se ejecutan en procesos hijos
+aislados, así que un archivo dañado no puede detener toda la ejecución; en su lugar se marca
+con un error.</p>
+
+<h3>Archivos sin medios decodificables</h3>
+<p>Algunos archivos que entrega una extracción de teléfono o una exportación VIC no contienen
+medios decodificables; los bytes simplemente no están. GLEAPP indica cada caso con claridad
+en la columna <strong>Error</strong>, en lugar de mostrar una excepción del decodificador, y
+aun así registra el MD5, el MediaID de VIC, el tamaño y los demás metadatos. Los mensajes de
+la columna Error se muestran en inglés:</p>
+<table>
+  <tr><th>La columna Error dice</th><th>Qué significa</th></tr>
+  <tr><td><em>Incomplete carve by the source tool</em></td><td>El nombre del archivo termina en <code>_partial</code> / <code>_embedded_N</code>. La herramienta de triaje que generó la exportación intentó extraer por carving una imagen de un archivo padre y solo obtuvo su encabezado. <strong>La imagen real está en el archivo padre</strong>; ingéstelo (p. ej., el directorio <code>com.snap.file_manager_*_SCContent_</code> de la extracción) y GLEAPP la desempaquetará.</td></tr>
+  <tr><td><em>Truncated PNG / JPEG - file header only, no image data</em></td><td>Una firma válida y unos pocos bytes de encabezado, y luego nada.</td></tr>
+  <tr><td><em>Truncated MP4</em></td><td>El archivo termina dentro de una de sus cajas MP4, que el mensaje nombra: la caja declara más bytes de los que le quedan al archivo, así que falta el resto del archivo.</td></tr>
+  <tr><td><em>Proprietary app-asset container</em></td><td>El formato propio de textura/filtro de una app (p. ej., filtros de maquillaje de RA), no una imagen estándar.</td></tr>
+  <tr><td><em>Snapchat streamed-video fragment</em> / <em>fragmented-MP4 init segment</em> / <em>MP4 media data with no header</em></td><td>Una descarga segmentada repartida en muchos archivos; ningún archivo por sí solo es un clip reproducible. GLEAPP une por sí mismo los fragmentos de caché de ExoPlayer (vea arriba); otras cachés segmentadas no se unen.</td></tr>
+  <tr><td><em>Malformed HEIC/HEIF - declared and decoded image sizes disagree</em></td><td>El archivo está mal formado: el tamaño de imagen que declara y el tamaño al que decodifica difieren.</td></tr>
+  <tr><td><em>Audio-frame fragment</em> / <em>gzip-compressed web-cache data</em></td><td>No es una imagen ni un video, pese a la extensión.</td></tr>
+</table>
+<p>Un video que contiene tanto su encabezado MP4 (<code>moov</code>) como sus datos de medios
+(<code>mdat</code>) pero aun así no da fotogramas se etiqueta como <em>MP4 header and media
+data both present - no frames could be decoded</em>; GLEAPP no determina el porqué.</p>
+
+<h2 id="reports">14. Informes y exportaciones</h2>
+<p><strong>Exportar informe</strong> abre un diálogo: elija un <strong>alcance</strong>
+(todos los archivos, solo categorizados, solo sin categoría, <strong>categorías
+específicas</strong>, donde marca exactamente las que quiere, p. ej., solo CAM + Child
+Exploitative, o la selección actual) y uno o más <strong>formatos</strong>. Los informes y
+exportaciones se escriben en inglés, cualquiera que sea el idioma de la interfaz, para que
+sus columnas y campos sean siempre los mismos para las herramientas que los leen.</p>
+<table>
+  <tr><td>Informe HTML</td><td>una página (con las miniaturas incrustadas) con el encabezado de su caso, un desglose "Report contents" y una tarjeta por imagen con los campos que eligió</td></tr>
+  <tr><td>CSV</td><td>metadatos completos, una fila por archivo</td></tr>
+  <tr><td>JSON</td><td>los mismos datos, estructurados; también trae el encabezado del caso</td></tr>
+  <tr><td>KMZ</td><td>medios geolocalizados para Google Earth / herramientas de mapas: un KML comprimido con una miniatura (o un fotograma clave de video) incluida para cada marcador, así que al hacer clic en un pin se ve la imagen en su ubicación</td></tr>
+  <tr><td>Lista MD5</td><td>un hash por fila (también desde la barra de selección / clic derecho)</td></tr>
+  <tr><td>JSON de Project VIC</td><td>el archivo VIC original con su Category / Comments / Tags escritos de vuelta, por MediaID y MD5 (aparece en casos VIC); Uncategorized se escribe como <code>null</code></td></tr>
+  <tr><td>Informe LAVA</td><td>una carpeta de proyecto que abre LAVA: los medios, un mapa de ubicación por cada archivo geolocalizado y un mapa general dibujados sin conexión a partir del mapa base que importó (&sect;19), los fotogramas clave de los videos y las tablas de artefactos. Tarda minutos en lugar de segundos, así que se ejecuta como un trabajo y la barra inferior muestra su avance</td></tr>
+</table>
+<p>Cada parte del diálogo (Qué archivos, Formato, Medios, Mapas, Encabezado del informe,
+Campos debajo de cada imagen) es un cuadro que puede contraer haciendo clic en su título.
+<strong>Qué archivos</strong> y <strong>Campos debajo de cada imagen</strong> empiezan
+abiertos; el resto, contraídos.</p>
+<p>Las horas del sistema de archivos / de ingesta en el HTML y el CSV se muestran en la
+<strong>zona horaria</strong> del caso (sección&nbsp;3) con su abreviatura (p. ej.,
+<code>2024-07-01 11:00 CDT</code>); el encabezado del HTML indica qué zona.
+<strong>Captura&nbsp;(EXIF)</strong> se deja tal como se registró; el JSON conserva los
+segundos epoch sin convertir (UTC).</p>
+
+<h3>Opciones del informe HTML</h3>
+<p>Cuando <strong>Informe HTML</strong> está marcado, el diálogo muestra:</p>
+<ul>
+  <li><strong>Encabezado del informe</strong>: <em>Agencia</em>, <em>Número de caso</em>,
+  <em>Número de elemento</em>, <em>Examinador</em>, <em>Notas</em> de texto libre y un
+  <em>Logo de la agencia</em> (elija una imagen; se incrusta en el informe). Se imprimen como
+  una franja en la parte superior del informe y se <strong>guardan con el caso</strong>, así
+  que la próxima vez vienen completados; complételos una vez por caso.</li>
+  <li><strong>Campos debajo de cada imagen</strong>: marque los metadatos que quiere debajo
+  de cada miniatura: nombre del archivo, nombre original, ruta, ruta en el dispositivo, fecha
+  de captura, fechas de modificación / ingesta, MD5 / SHA-1 / SHA-256 / pHash, dimensiones,
+  tamaño, duración, cámara, GPS, categoría, marcas, notas, rostros, proporción de piel,
+  origen, tipo MIME, MediaID de VIC, hash conocido, error. El valor predeterminado es
+  <strong>nombre del archivo, fecha de captura, MD5</strong>; su selección se recuerda por
+  caso. Los campos sin valor para un archivo simplemente se omiten de esa tarjeta.</li>
+</ul>
+<p>El informe HTML está <strong>agrupado por categoría</strong>: un índice "Jump to section"
+arriba enlaza a la sección de cada categoría, CAM, Child Exploitative, etc., y cada
+encabezado de sección tiene un enlace para volver arriba. Los metadatos de cada tarjeta
+empiezan <strong>contraídos</strong> (haga clic en el nombre del archivo, o en "expand all").
+Una barra de controles sobre la primera sección tiene dos interruptores: <strong>Blur
+images</strong> (desenfocar imágenes; activado por defecto, pase el cursor sobre una
+miniatura para verla nítida) y <strong>Dark mode</strong> (modo oscuro); ambos recuerdan su
+elección por navegador. Al imprimir se muestran los metadatos de todas las tarjetas y las
+imágenes sin desenfocar, en modo claro.</p>
+<p>El informe también dibuja sus propios <strong>mapas de ubicación</strong> a partir del
+mapa base activo (&sect;19), si hay uno importado y algún archivo está geolocalizado: un mapa
+general <strong>Locations</strong> cerca del inicio, y un pequeño mapa localizador en cada
+tarjeta geolocalizada que cubra el mapa base. Un archivo cuyas coordenadas caen fuera del
+mapa base no recibe mapa, porque se vería como un fondo vacío con un marcador; la nota debajo
+del mapa general cuenta esos archivos, y el mapa general encuadra solo los archivos que
+dibujó. Ambos quedan incorporados al archivo del informe, así que sigue siendo autónomo; el
+resumen nombra el mapa base y su hash para que un lector pueda obtener el mismo archivo y ver
+el mismo mapa años después. Los mapas llevan los nombres de lugares, aguas y calles que
+contiene el mapa base, cuando Pillow puede proveer una fuente escalable. En el mapa general
+<strong>Locations</strong>, un punto <strong>rojo</strong> es un archivo en ese lugar,
+incorporado a la propia imagen del mapa; un punto <strong>azul</strong> son dos o más
+archivos lo bastante cerca como para superponerse, dibujado como una capa superpuesta que se
+puede pulsar, con una cantidad: pase el cursor (o llegue con tabulador) para desplegar los
+archivos en puntos individuales que puede pulsar, como una app de mapas que separa un pin
+apilado. Desmarque <strong>Dibujar mapas de ubicación</strong> en el diálogo Exportar, o
+pase <code>--no-maps</code> a <code>gleapp report</code>, para dejarlos fuera.</p>
+<p><strong>Medios</strong> (casillas del diálogo, activadas por defecto, guardadas con el
+caso; se muestran mientras <strong>Informe HTML</strong> está marcado y <strong>Solo
+metadatos</strong> no):</p>
+<ul>
+  <li><strong>Incluir imágenes a tamaño completo</strong>: cada imagen original se copia,
+  byte por byte, a una carpeta junto al informe con su nombre (<code>report.html</code> recibe
+  <code>report_media/</code>), y <strong>al hacer clic en una miniatura se abre en una pestaña
+  nueva</strong>. Un formato que un navegador no puede mostrar (HEIC, TIFF, RAW de cámara,
+  ...) se copia tal cual, con un JPEG a tamaño completo a su lado para que el clic lo abra; los
+  detalles de la tarjeta enlazan al original.</li>
+  <li><strong>Incluir videos</strong>: cada video original se copia a la misma carpeta; un
+  triángulo de reproducción marca las tarjetas de video y <strong>al hacer clic el video se
+  reproduce en una pestaña nueva</strong>. Esto es lo que hace grande la carpeta; desmárquelo
+  (o "imágenes a tamaño completo") para un informe liviano, solo con miniaturas.</li>
+  <li><strong>Desenfocar las imágenes por defecto</strong>: define si <em>este</em> informe
+  se abre desenfocado o no, incorporado al archivo al exportar. Quien lo abra puede igualmente
+  cambiar el interruptor <strong>Blur images</strong> para su propia visualización; eso nunca
+  se guarda en el archivo, así que la siguiente persona que lo abra ve el valor predeterminado
+  que eligió aquí.</li>
+</ul>
+<p>Solo las miniaturas van incrustadas, así que la página en sí sigue siendo pequeña.
+Mantenga juntas la página y su carpeta <code>_media</code> cuando copie o entregue un
+informe: los enlaces son relativos, así que funcionan dondequiera que vayan las dos, y nada
+más. Exportar de nuevo reemplaza la carpeta.</p>
+<h3>Solo metadatos (sin imágenes ni videos)</h3>
+<p>Para la entrega a la otra parte (discovery), cuando no se pueden entregar las imágenes y
+videos en sí, marque <strong>Solo metadatos: sin imágenes ni videos</strong>, la primera
+opción de la sección <strong>Medios</strong> del diálogo. Se aplica a todos los formatos de
+esa exportación:</p>
+<ul>
+  <li><strong>Informe HTML</strong>: todos los campos que marcó, las categorías, marcas y
+  mapas de ubicación, sin miniatura, copia a tamaño completo ni fotograma de video de ningún
+  archivo, y sin carpeta <code>_media</code>. El encabezado recibe una fila
+  <strong>Images</strong> que indica que no se incluye ninguna, los metadatos de cada tarjeta
+  empiezan abiertos, y no hay interruptor de desenfoque.</li>
+  <li><strong>KMZ</strong>: los marcadores y sus detalles, sin miniaturas.</li>
+  <li><strong>CSV, JSON, lista MD5, JSON de Project VIC</strong>: sin cambios; nunca llevan
+  imágenes.</li>
+  <li><strong>Informe LAVA</strong>: no disponible (en gris) mientras la opción esté marcada,
+  porque un proyecto LAVA se construye en torno a los medios.</li>
+</ul>
+<p>Las salidas reciben el sufijo <code>_metadata</code> (<code>report_metadata.html</code>,
+<code>geolocation_metadata.kmz</code>, ...), así que nunca sobrescriben un informe que lleva
+imágenes. La elección se guarda con el caso, y mientras está activada la sección Medios se
+abre sola al abrir el diálogo, así que nunca queda oculta en un cuadro contraído. Una
+exportación HTML que no escribe carpeta de medios también elimina la carpeta
+<code>_media</code> que una exportación anterior del mismo nombre dejó a su lado. La carpeta
+<code>reports/</code> aún puede contener exportaciones anteriores que sí llevan imágenes, así
+que entregue los archivos de solo metadatos en sí, no la carpeta entera. Línea de comandos:
+<code>gleapp report --no-media</code> (se rechaza junto con <code>--format lava</code>).</p>
+<p>Un desglose <strong>Report contents</strong> cerca del inicio da la cantidad de archivos
+del alcance del informe, dividida por tipo y por categoría (con un porcentaje y una clave de
+colores que coincide con sus categorías), una barra de composición, las coincidencias de
+hashes conocidos y el total del caso. Las salidas quedan en la carpeta <code>reports/</code>
+del caso; las exportaciones con alcance reciben un sufijo en el nombre del archivo.</p>
+
+<h2 id="save">15. Guardado automático e instantáneas</h2>
+<p>Cada cambio de categoría, revisión, marca y nota se guarda de inmediato (SQLite WAL). El
+encabezado muestra "Todos los cambios guardados · HH:MM" / "Guardando..." / un aviso para
+reintentar si falla. En segundo plano, una copia completa de <code>case.gleapp</code> con
+fecha y hora se guarda como instantánea en <code>backups/</code> cada 10 minutos por defecto
+mientras haya ediciones desde la última instantánea, y siempre al cerrar o cambiar de caso.
+Se conservan las 20 instantáneas automáticas más recientes; una instantánea que guarde usted
+nunca se elimina automáticamente.</p>
+<p><strong>&#9776;&nbsp;Menú &rarr; Caso &rarr; Instantáneas</strong> abre un panel que lista
+cada instantánea con su fecha, etiqueta (<code>auto</code>, <code>manual</code> o su texto) y
+tamaño:</p>
+<ul>
+  <li><strong>Instantáneas automáticas</strong>: cada 10, 30 o 60 minutos, o desactivadas.
+    Desactivadas igual toman una al cerrar el caso. La elección se guarda con el caso.</li>
+  <li><strong>Guardar instantánea ahora</strong>: crea una a pedido, con una etiqueta
+    opcional. Permanece hasta que la elimine.</li>
+  <li><strong>Eliminar</strong>: quita la instantánea seleccionada. Esto no se puede
+    deshacer.</li>
+  <li><strong>Restaurar</strong>: reemplaza el caso en uso por la instantánea seleccionada.
+    Primero se escribe el estado actual en una instantánea <code>pre-restore</code>, así que
+    una restauración también se puede deshacer; luego el caso se recarga. No se puede
+    restaurar mientras se ejecuta un trabajo.</li>
+</ul>
+
+<h2 id="reprocess">16. Reprocesar y recuperar medios eliminados</h2>
+<ul>
+  <li><strong>Reintentar archivos fallidos</strong>: vuelve a procesar los archivos con
+  error (después de una corrección, o de una falla transitoria). Muestra cuántos se
+  recuperaron.</li>
+  <li><strong>Volver a buscar duplicados</strong>: solo reconstruye los agrupamientos.</li>
+  <li><strong>Volver a comprobar</strong> (<em>Hashes conocidos</em>): solo reconstruye las
+  coincidencias con conjuntos de hashes.</li>
+  <li><strong>Ejecutar detección de rostros / piel</strong>: solo la pasada de rostros y
+  piel.</li>
+  <li><strong>Expandir archivos comprimidos</strong> (sección <em>Archivos comprimidos y
+  documentos</em>): aparece cuando el caso contiene algún <code>.zip</code> /
+  <code>.tar</code> / <code>.gz</code>. Abre cada uno que aún no se expandió y procesa lo que
+  sale; <strong>Volver a revisar archivos comprimidos</strong> los vuelve a abrir todos. Los
+  archivos comprimidos se expanden en la ingesta solo cuando <em>Expandir los archivos
+  comprimidos encontrados en los orígenes</em> está marcado; use esto cuando no lo estaba, o
+  en un caso ingestado antes de que existiera esa opción.</li>
+  <li><strong>Extraer medios de documentos</strong> (sección <em>Archivos comprimidos y
+  documentos</em>): vuelve a recorrer los orígenes del caso en busca de los PDF, páginas web,
+  MHTML y archivos web que una ingesta sin <em>Extraer medios de documentos</em> dejó fuera,
+  los abre y procesa lo que sale. Un documento ya abierto no se vuelve a abrir, así que una
+  segunda ejecución no agrega nada. Los orígenes deben seguir donde los registró el caso; uno
+  que no está se nombra en el resultado y se omite.</li>
+</ul>
+<p>Cada uno muestra el progreso junto a su propio botón. Un reprocesamiento completo está
+disponible desde la línea de comandos (<code>gleapp process --force</code>).</p>
+
+<h3>Qué se puede recuperar por carving</h3>
+<p>Solo se puede hacer carving en una <strong>imagen de disco</strong>. Una extracción móvil
+es un archivo comprimido con una lista de miembros dentro, así que no hay nada que recuperar
+que su listado no le dé ya.</p>
+<ul>
+  <li><strong>Adquisición E01, SMART o Ex01</strong>: indique el primer segmento del
+    conjunto.</li>
+  <li><strong>AFF</strong>: indique el <code>.aff</code>; para una carpeta AFD, cualquier
+    <code>.aff</code> de ella.</li>
+  <li><strong>Imagen de disco de Apple</strong>: indique el <code>.dmg</code> o el
+    <code>.sparseimage</code>. Para un <code>.dmg</code> que <code>hdiutil segment</code>
+    dividió en archivos <code>.dmgpart</code>, indique el <code>.dmg</code> y mantenga los
+    <code>.dmgpart</code> a su lado; uno que falte se rechaza y se nombra. Para un sparse
+    bundle, indique la carpeta <code>.sparsebundle</code>: en un Mac el diálogo de archivos la
+    lista como un solo elemento, y en Windows o Linux use el botón de carpeta.</li>
+  <li><strong>AFM y AFF4</strong>: indique el <code>.afm</code>, con sus archivos en bruto al
+    lado, o el <code>.aff4</code> (para un AFF4 en bandas, cualquiera de sus archivos).</li>
+  <li><strong>Disco de máquina virtual</strong>: indique el <code>.vhd</code>,
+    <code>.vhdx</code>, <code>.vmdk</code> o <code>.qcow2</code>. Un disco diferencial
+    necesita a su padre al lado, y un descriptor VMDK sus extensiones.</li>
+  <li><strong>Imagen en bruto</strong>: un archivo, o cualquier segmento de un conjunto
+    dividido numerado.</li>
+  <li><strong>Imagen de disco de Apple o sparse bundle cifrados, AFF cifrado, o un conjunto
+    E01, SMART o en bruto que FTK Imager cifró con AD encryption</strong>: indíquelo como
+    arriba; GLEAPP pide su contraseña o, para uno sellado con un certificado, su clave privada
+    (&sect;1). Un volumen BitLocker, un volumen APFS cifrado o un contenedor LUKS dentro de una
+    imagen se piden de la misma manera.</li>
+  <li><strong>No se acepta</strong>: la evidencia lógica, la de EnCase (<code>.L01</code>) y
+    la de FTK Imager (<code>.ad1</code>), que contiene copias de archivos en lugar de un disco
+    y se rechaza con ese motivo, incluido un conjunto cifrado con AD encryption que resulta
+    contener una.</li>
+  <li>Una adquisición se reconoce por su propia firma y una imagen en bruto por lo que
+    contiene, así que la extensión no importa.</li>
+</ul>
+
+<h3>Cómo hacer carving</h3>
+<ul>
+  <li><strong>En la ingesta</strong>: marque <em>Recuperar medios (registros del sistema de
+    archivos y carving)</em> en el lanzador. Primero se ejecuta el recorrido, luego la
+    recuperación, y después se procesa todo junto.</li>
+  <li><strong>Después</strong>: abra la sección <strong>Carving</strong> de la barra lateral
+    y haga clic en <strong>Carving de medios eliminados</strong> (pasa a ser <strong>Hacer
+    carving otra vez</strong> cuando ya se hizo en un origen; volver a ejecutarlo omite los
+    desplazamientos ya recuperados). La barra inferior muestra su avance, y los archivos
+    nuevos se hashean, reciben miniatura y se agrupan cuando termina.</li>
+  <li><strong>Línea de comandos</strong>: <code>gleapp source carve &lt;name&gt;</code> para
+    toda la imagen, o <code>--unallocated-only</code> para acotarlo, como hace siempre la
+    interfaz gráfica. Siga con <code>gleapp process</code> para hashear y generar miniaturas
+    de lo recuperado.</li>
+</ul>
+
+<h3>Tres orígenes</h3>
+<p>Una imagen de disco se <strong>recorre</strong> en la ingesta: sus sistemas de archivos se
+leen archivo por archivo, así que cada archivo conserva el nombre, la ruta y las fechas que
+registró el sistema de archivos. La pasada de <strong>medios eliminados</strong> es algo
+aparte que usted pide. Agrega lo que el recorrido no alcanza, en dos pasos que producen
+distintos tipos de fila, y la diferencia importa en un informe:</p>
+<table>
+  <tr><th>Origen</th><th>Recuperado mediante</th><th>Nombre</th><th>Fechas</th></tr>
+  <tr><td>recorrido (walked)</td><td>la lectura de un sistema de archivos activo</td><td>nombre y ruta reales</td><td>creación, modificación y acceso de NTFS; FAT32 y exFAT como texto registrado</td></tr>
+  <tr><td>recuperado (recovered)</td><td>un registro eliminado que aún nombraba el archivo</td><td><strong>nombre real</strong> (y carpeta, en flash)</td><td>creación, modificación y acceso de NTFS; FAT32 y exFAT como texto registrado; modificación de YAFFS2, JFFS2 y UBIFS</td></tr>
+  <tr><td>por carving (carved)</td><td>una búsqueda de firmas en los bytes en bruto</td><td>ninguno; se archiva con su desplazamiento en bytes</td><td>ninguna, vacía</td></tr>
+</table>
+<p>La pasada de registros eliminados se ejecuta primero, así que un archivo eliminado vuelve
+con su nombre en lugar de como un gemelo sin nombre recuperado por carving, y los
+desplazamientos que recuperó se le pasan al carver para que los omita.</p>
+
+<h3>Archivos que un volumen no contiene por completo</h3>
+<p>El tamaño registrado de un archivo recorrido no siempre es lo que el volumen guarda para
+él. En NTFS y APFS el lector lo distingue, y GLEAPP registra y copia lo que contiene el
+volumen:</p>
+<ul>
+  <li><strong>Un marcador de archivo solo en línea de la nube</strong> (por ejemplo, Archivos
+    a petición de OneDrive) conserva en el volumen el nombre, el tamaño y las fechas del
+    archivo, pero nada de su contenido, que está en el proveedor. Se lista <strong>sin copia,
+    sin hash y sin miniatura</strong>, y su fila dice <em>online-only cloud placeholder</em>
+    con el tamaño que registra el volumen y los bytes que guarda. El panel Origen los cuenta,
+    el filtro de errores los lista, y <strong>Reintentar archivos fallidos</strong> los deja
+    fuera, ya que no hay nada que reintentar. La fila muestra que en esa carpeta había un
+    archivo con ese nombre, tamaño y fechas. Su contenido nunca estuvo en la imagen.</li>
+  <li><strong>Un archivo disperso (sparse)</strong> se lee con su longitud registrada, con
+    ceros donde el volumen no guarda nada. Cuando los medios se copian al caso, las secuencias
+    de ceros se escriben como huecos, así que la copia puede ocupar menos que su longitud.
+    Cuánto menos depende del sistema de archivos donde esté el caso, y los bytes son los mismos
+    de cualquier manera.</li>
+  <li><strong>Un archivo que el volumen contiene con varios nombres</strong> (enlaces duros) es
+    un solo archivo. Se copia una vez al caso y los demás nombres se enlazan a esa copia. Cada
+    nombre conserva su propia fila.</li>
+  <li><strong>Un archivo que Windows comprimió</strong> con la compresión de NTFS, o con la
+    compresión XPRESS del filtro de superposición de Windows, se lee como su contenido. Uno
+    comprimido con el LZX de ese filtro no se decodifica. Se informa como no leído en lugar de
+    escribirse como ceros.</li>
+  <li><strong>Antes de copiar se comprueba el espacio.</strong> Antes de copiar medios desde
+    una imagen de disco, en la ingesta o después con <strong>Copiar al caso</strong>, se suma
+    el espacio que necesitan las copias y se compara con el espacio libre del volumen del caso.
+    Una copia que no cabe se rechaza antes de escribir nada. Si el volumen se llena de todos
+    modos, la copia se detiene y lo indica.</li>
+</ul>
+<p>Sin probar, por falta de una muestra: un marcador que aún contiene parte de su contenido,
+y un archivo APFS marcado como dataless.</p>
+
+<h3>Recuperar desde registros eliminados</h3>
+<p>Para NTFS, FAT32, exFAT, YAFFS2, JFFS2 y UBIFS: un archivo eliminado cuyo registro aún lo
+nombra se recupera con su <strong>nombre real</strong>.</p>
+<table>
+  <tr><th>Sistema de archivos</th><th>Registro usado</th><th>Qué se recupera</th></tr>
+  <tr><td>NTFS</td><td>la entrada de la MFT</td><td>el nombre real <strong>y</strong> las horas de creación, modificación y acceso que contiene el registro, como instantes reales (FILETIME se basa en UTC). La única forma de recuperar un archivo <em>residente</em>: uno lo bastante pequeño como para vivir dentro del registro, que un carving del espacio libre nunca alcanza porque nunca ocupó un clúster.</td></tr>
+  <tr><td>FAT32</td><td>la entrada de directorio eliminada</td><td>el nombre real (el borrado sobrescribe el primer carácter de un nombre corto 8.3, que se muestra como <code>_</code>; un nombre largo se reconstruye completo). Se lee suponiendo que estaba en una sola secuencia de clústeres, ya que el borrado pone en cero la cadena. Sus fechas se leen, pero FAT32 guarda una hora local sin zona, así que se conservan como texto registrado y las columnas de instantes quedan vacías.</td></tr>
+  <tr><td>exFAT</td><td>la entrada de directorio eliminada</td><td>el nombre real. Un archivo de una sola secuencia se lee exactamente como se registró; uno fragmentado se sigue por la cadena que conservó; uno cuya cadena se borró se rechaza en lugar de leerse adivinando. Fechas como en FAT32: se leen, se conservan como texto, sin instante.</td></tr>
+  <tr><td>YAFFS2</td><td>los encabezados y páginas del archivo, que quedan en la flash hasta que la recolección de basura borra su bloque</td><td>el nombre real y la carpeta donde estaba. YAFFS reutiliza los identificadores de objeto, así que también puede volver un archivo anterior que tuvo un identificador reutilizado, como su propia copia. La hora de modificación, como instante (hora Unix); YAFFS no guarda hora de creación.</td></tr>
+  <tr><td>JFFS2</td><td>los nodos del archivo, incluidos los que la flash NOR marca como obsoletos</td><td>el nombre real y la carpeta, de la entrada de directorio más reciente que lo nombró. La hora de modificación, como instante.</td></tr>
+  <tr><td>UBIFS</td><td>los nodos de inodo, datos y entrada de directorio del archivo que siguen en el volumen, dentro de UBI o por sí solo</td><td>el nombre real y la carpeta. La hora de modificación, como instante. Solo se leen los bloques que el volumen mapea ahora, no las copias anteriores que UBI pueda conservar.</td></tr>
+</table>
+<ul>
+  <li><strong>Las horas sin zona nunca se convierten en instantes.</strong> Se conservan como
+    texto registrado (&sect;3). Un archivo FAT32 o exFAT <strong>recorrido</strong>, el caso
+    habitual, funciona igual.</li>
+  <li><strong>Los bytes sobrescritos nunca se presentan como el archivo.</strong> En NTFS,
+    FAT32 y exFAT, un archivo se recupera solo mientras sus clústeres sigan libres, y se
+    rechaza cuando un archivo posterior tomó alguno. En flash, un archivo se recupera solo
+    mientras sigan todas las páginas o bloques que necesita su tamaño; un bloque borrado y un
+    hueco que nunca se escribió se ven igual, así que cualquiera de los dos rechaza el archivo
+    en lugar de rellenarlo con ceros.</li>
+  <li><strong>YAFFS1 no se recupera.</strong> Ordena las copias de una página solo con un
+    número de serie de 2 bits, que no puede decir qué copia tenía por última vez un archivo
+    eliminado.</li>
+  <li><strong>Los archivos recuperados siempre se copian al caso</strong>, porque un archivo
+    eliminado no es una secuencia contigua como un hallazgo por carving, y uno residente ni
+    siquiera está en el disco como una secuencia.</li>
+</ul>
+
+<h3>Recuperar por carving</h3>
+<p>El espacio que ningún volumen reclama se recorre en busca de firmas de imagen y video,
+recuperando archivos que ningún registro sobreviviente nombra.</p>
+<ul>
+  <li>Un archivo recuperado por carving <strong>no tiene nombre, ruta ni fecha
+    propios</strong>. Se archiva con el desplazamiento en bytes donde se encontró, en dieciséis
+    dígitos hexadecimales (<code>0000000000404400.jpg</code> es el desplazamiento 4.211.712),
+    y sus columnas de fecha quedan vacías.</li>
+  <li>Los archivos de carving se vuelven a leer bajo demanda buscando ese desplazamiento, así
+    que la adquisición debe quedarse donde la registró el caso.</li>
+  <li><strong>Once firmas y nada más</strong>: JPEG, PNG, GIF, WebP, HEIC/AVIF, TIFF y BMP
+    como imágenes; AVI, MP4/MOV/3GP, Matroska/WebM y Ogg con Theora como video. Nada de audio
+    (GLEAPP no tiene un tipo audio), ni documentos, archivos comprimidos o bases de datos, que
+    mediacarve puede recuperar pero GLEAPP no le pide.</li>
+  <li>Cada tipo tiene un tamaño máximo, para que un encabezado falso no pueda reclamar el
+    resto del disco (64 MB para JPEG, PNG, WebP y HEIC, 32 MB para GIF, 1 GB para BMP, 4 GB
+    para TIFF y para video), y un mínimo, para que un encabezado sin nada detrás no se informe
+    como archivo.</li>
+  <li>Un archivo de carving nunca pasa de su máximo, del final de la imagen ni, en un carving
+    acotado, del final de la secuencia libre donde se encontró. Uno cortado en cualquiera de
+    esos puntos es el comienzo de un archivo y no el archivo entero.</li>
+</ul>
+
+<h3>Qué se puede y qué no se puede decir de un archivo de carving</h3>
+<ul>
+  <li>No lee ningún sistema de archivos, así que no puede decir si los bytes eran un archivo
+    activo o uno eliminado. Con un carving acotado sabe que estaban en espacio que ningún
+    volumen reclamaba en el momento de la adquisición, lo que es una afirmación real y no lo
+    mismo que "el usuario eliminó esto".</li>
+  <li>Encuentra archivos contiguos, así que un archivo fragmentado se recupera solo hasta su
+    primer fragmento. Por eso una imagen de carving puede verse bien hasta la mitad y luego
+    convertirse en basura.</li>
+</ul>
+
+<h3>Qué puede hacer cada sistema de archivos</h3>
+<p>El recorrido lee veinticinco tipos, pero las otras dos pasadas necesitan más de un sistema
+de archivos que el recorrido:</p>
+<table>
+  <tr><th>Sistema de archivos</th><th>Recorrido</th><th>Registros eliminados</th><th>Espacio libre, para acotar</th></tr>
+  <tr><td>NTFS, FAT32, exFAT</td><td>sí</td><td><strong>sí</strong></td><td>sí</td></tr>
+  <tr><td>FAT16, FAT12</td><td>sí</td><td>no</td><td>sí</td></tr>
+  <tr><td>HFS+, HFSX, APFS, F2FS</td><td>sí</td><td>no</td><td>sí</td></tr>
+  <tr><td>ext2 / ext3 / ext4</td><td>sí</td><td>no</td><td><strong>no</strong></td></tr>
+  <tr><td>QNX4, EFS, ETFS, IFS</td><td>sí</td><td>no</td><td><strong>no</strong></td></tr>
+  <tr><td>SquashFS, JFFS2, UBI, UBIFS, YAFFS1, YAFFS2</td><td>sí</td><td>no</td><td><strong>no</strong></td></tr>
+  <tr><td>XFS, Btrfs</td><td>sí</td><td>no</td><td>sí</td></tr>
+  <tr><td>ReFS</td><td>sí</td><td>no</td><td><strong>no</strong></td></tr>
+</table>
+<p>Así, en una adquisición de Mac o de Linux nada vuelve con su nombre, y en un disco con
+cualquier volumen que no pueda informar su espacio libre la búsqueda pasa a toda la imagen en
+lugar de dejar parte del disco sin leer. Una partición ext4 en un disco de arranque dual
+basta para eso.</p>
+
+<h3>Cuánto del disco se lee (acotamiento)</h3>
+<ul>
+  <li>Una firma dentro de una secuencia asignada pertenece a un archivo que el árbol de
+    directorios ya nombra y que el recorrido ya registró. Buscar solo en el espacio que ningún
+    volumen reclama es mucho menos trabajo y da un material mucho mejor.</li>
+  <li>La <strong>galería siempre acota</strong>; la línea de comandos no, salvo que lo
+    pida.</li>
+  <li>Un carving de toda la imagen no es un error, es otra pregunta. Es la única forma de
+    alcanzar un archivo residente de NTFS como hallazgo de carving, y en un disco usado la
+    mayor parte de lo que agrega son recursos incrustados dentro de archivos activos.</li>
+  <li>El espacio fuera de todos los volúmenes que el lector puede nombrar también está sin
+    reclamar: el inicio de un disco particionado, una partición cuyo sistema de archivos no
+    reconoce y lo que haya después de la última partición. Una imagen sin ningún volumen que
+    pueda nombrar se recorre de punta a punta.</li>
+  <li>Si algún volumen no puede informar su espacio libre, se recorre toda la imagen. Si todos
+    los volúmenes informan y entre todos reclaman cada byte, no se hace carving de nada: un
+    disco lleno hace la búsqueda más pequeña y no la más grande.</li>
+  <li>El caso registra qué se recorrió, por origen, así que después puede decir cuánto del
+    disco se leyó y en cuántas secuencias.</li>
+</ul>
+
+<h3>Imágenes en bruto comparadas con E01</h3>
+<ul>
+  <li>Un E01, Ex01 o AFF trae el hash del disco calculado por la herramienta de adquisición,
+    cuando esta lo registró, y una imagen en bruto no trae ninguno. Así, un origen en bruto se
+    identifica, cuando se revincula o se descartan sus copias, por su tamaño y un hash de sus
+    primeros y últimos 4&nbsp;MiB, que distingue dos imágenes del mismo tamaño y nada
+    más.</li>
+  <li>Una imagen de disco de Apple registra sumas de comprobación de sus datos guardados pero
+    ningún hash del disco, así que, como una adquisición que no registró ninguno, se identifica
+    solo por su tamaño cuando se revincula o se descartan sus copias.</li>
+  <li>Una imagen cuya tabla de particiones describe un volumen más grande de lo que contiene el
+    archivo (un conjunto dividido al que le faltan los últimos segmentos, o una imagen
+    truncada) se recorre hasta donde llega, y el panel Origen dice qué volumen no está
+    completo.</li>
+</ul>
+
+<h3>Ver el resultado</h3>
+<ul>
+  <li><strong>Panel Origen</strong>: <em>N recorridos &middot; K recuperados de registros
+    eliminados &middot; M por carving</em>.</li>
+  <li>Filtro <strong>Cómo se recuperó</strong> en la barra lateral (&sect;8): <em>Recorrido,
+    aún listado</em>, <em>Recuperado de un registro eliminado</em> o <em>Carving en espacio no
+    asignado</em>.</li>
+  <li>Los <strong>informes</strong> lo llevan con las mismas palabras (en inglés), así que la
+    distinción sobrevive a la entrega: <strong>How recovered</strong> es un campo que puede
+    marcar debajo de cada imagen en el informe HTML, <code>origin</code> es una columna del
+    CSV, y el proyecto LAVA le da una columna propia. Una fila de una carpeta o de un archivo
+    comprimido común lo deja vacío, porque la pregunta solo tiene respuesta para una
+    adquisición.</li>
+</ul>
+
+<h2 id="keys">17. Atajos de teclado</h2>
+<table>
+  <tr><td><kbd>0</kbd>–<kbd>4</kbd></td><td>categoriza la selección con ese código VIC (0 = Non-pertinent)</td></tr>
+  <tr><td><kbd>5</kbd></td><td>quita la categoría (Uncategorized)</td></tr>
+  <tr><td><kbd>6</kbd>–<kbd>9</kbd></td><td>sus propias categorías, en orden</td></tr>
+  <tr><td><kbd>F</kbd></td><td>busca imágenes similares al archivo enfocado</td></tr>
+  <tr><td><kbd>H</kbd></td><td>vista hexadecimal del archivo enfocado</td></tr>
+  <tr><td><kbd>I</kbd></td><td>alterna el panel de detalles</td></tr>
+  <tr><td><kbd>A</kbd></td><td>selecciona todo en la página</td></tr>
+  <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>mueve la selección (galería); desplaza las columnas (vista de lista)</td></tr>
+  <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>se mueve entre filas (vista de lista)</td></tr>
+  <tr><td><kbd>PgUp</kbd> <kbd>PgDn</kbd></td><td>página anterior / siguiente</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>Home</kbd> / <kbd>End</kbd></td><td>primera / última página</td></tr>
+  <tr><td><kbd>?</kbd></td><td>abre este manual</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>cierra menús, diálogos y el visor</td></tr>
+</table>
+
+<h2 id="privacy">18. Datos y privacidad</h2>
+<p>GLEAPP se ejecuta por completo en su equipo y no hace solicitudes de red propias; incluso
+los mapas se dibujan a partir de un archivo de mapa base que usted importa
+(sección&nbsp;19), nunca desde un servidor de mosaicos. En Windows, la ventana de escritorio
+la dibuja el WebView2 Runtime de Microsoft: GLEAPP desactiva sus comprobaciones de
+SmartScreen y mantiene sus informes de fallos en el equipo, y el runtime igualmente recopila
+los datos de diagnóstico que Windows recopila para él, que el ajuste <strong>Datos de
+diagnóstico</strong> de Windows controla en parte y que una aplicación no puede desactivar.
+<code>gleapp web</code> en su propio navegador no usa WebView2. La evidencia que ingesta
+solo se lee; toda la salida se escribe dentro de la carpeta del caso y en la configuración /
+almacén de hashes de usuario en <code>%APPDATA%</code> y <code>%LOCALAPPDATA%</code>. Las
+acciones del examinador (categorizar, instantánea, importar, volver a comparar, importación
+VIC, agregar / combinar / vaciar la reserva de hashes) se registran en el registro de
+auditoría del caso para que sean defendibles. GLEAPP no incluye ni puede identificar ningún
+contenido ilegal; identifica <em>archivos conocidos</em> (mediante hashes que usted aporta,
+incluida su propia reserva local de hashes) y muestra <em>señales</em>; la categorización es
+siempre su criterio profesional.</p>
+<p>La <strong>reserva local de hashes</strong> (sección&nbsp;12) contiene solo valores de
+hash MD5, sin contenido, nombres ni rutas de archivos, de archivos que usted categorizó 1–3,
+y nunca sale de su equipo salvo que la <strong>exporte</strong> o la apunte a una ubicación
+compartida.</p>
+<p>La traducción de la interfaz también es local: el catálogo de idioma viene con GLEAPP y se
+aplica en la página; no se envía ningún texto a ningún servicio de traducción. Los nombres de
+archivo, las rutas, los metadatos y los nombres de categorías y marcas están marcados para
+que tampoco los traduzca la función de traducción de un navegador.</p>
+
+<h2 id="maps">19. Mapas (mapas base sin conexión)</h2>
+<p>GLEAPP no incluye datos de mapas ni los descarga por sí mismo, así que las coordenadas de
+un sujeto nunca llegan a un servidor de terceros. Para ver archivos geolocalizados en un mapa,
+importe una vez un archivo de mapa base con <strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr;
+Mapas</strong>; GLEAPP lo copia en su carpeta de datos, registra su SHA-256 y dibuja los mapas
+a partir de él, totalmente sin conexión. El panel de detalles muestra entonces un mapa para
+cualquier archivo con GPS (más un botón <strong>Copiar</strong> para las coordenadas), y
+<strong>Mostrar el filtro actual en el mapa</strong> dibuja cada archivo geolocalizado que
+coincide con sus filtros; haga clic en un marcador para ver su miniatura y un botón
+<strong>Detalles</strong>. El informe HTML también dibuja sus propios mapas a partir del mapa
+base y los incrusta: un mapa general <strong>Locations</strong> cerca del inicio, y un pequeño
+mapa localizador en cada archivo geolocalizado que cubra el mapa base. Esas imágenes quedan
+incorporadas al archivo del informe, así que sigue siendo autónomo y sin conexión; el resumen
+nombra el mapa base y su hash para que un lector pueda obtener el mismo archivo y ver el mismo
+mapa. Los mapas llevan los nombres de lugares, aguas y calles que contiene el mapa base,
+cuando Pillow puede proveer una fuente escalable. Desmarque <strong>Dibujar mapas de
+ubicación</strong> en el diálogo Exportar, o pase <code>--no-maps</code> a <code>gleapp
+report</code>, para dejarlos fuera.</p>
+
+<h3>Inicio rápido</h3>
+<ol>
+  <li><strong>Crear un archivo de mapa (una vez).</strong> Hágalo en cualquier computadora con
+    internet, no en la estación de revisión. La forma más simple es <strong>GLEAPP Map
+    Downloader</strong> (<code>github.com/abrignoni/GLEAPP-MapDownloader</code>): descárguelo
+    para su sistema, elija un área y un nivel de detalle en su ventana, y haga clic en
+    <strong>Download</strong>. No necesita instalar nada más. O use la herramienta de
+    Protomaps:
+    <ul>
+      <li>Descargue la herramienta <code>pmtiles</code> desde
+        <code>github.com/protomaps/go-pmtiles/releases</code> y descomprímala (en Windows obtiene
+        <code>pmtiles.exe</code>). No hay nada que instalar.</li>
+      <li>Obtenga el recuadro de su área: en <code>bboxfinder.com</code>, dibuje un rectángulo
+        alrededor del área. Le da cuatro números, en el orden oeste, sur, este, norte.</li>
+      <li>Desde la carpeta de la herramienta, ejecute esto con una fecha reciente y sus números:
+        <pre style="margin:6px 0"><code>pmtiles extract https://build.protomaps.com/20260902.pmtiles case-area.pmtiles --bbox=-77.12,38.79,-76.90,38.99</code></pre>
+        En Windows use <code>pmtiles.exe</code>. Deje el <code>=</code> justo después de
+        <code>--bbox</code>, sin espacio.</li>
+    </ul>
+  </li>
+  <li><strong>Importarlo.</strong> <strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr; Mapas
+    &rarr; Importar archivo de mapa base&hellip;</strong>, o <code>gleapp maps import
+    case-area.pmtiles</code>. El primer mapa base importado pasa a ser el activo.</li>
+  <li><strong>Verlo.</strong> Haga clic en un archivo con GPS para ver su mapa en el panel de
+    detalles, o use <strong>Mapas &rarr; Mostrar el filtro actual en el mapa</strong> para
+    dibujar cada archivo geolocalizado que coincide con sus filtros.</li>
+</ol>
+<p><strong>Los nombres de calles necesitan zoom.</strong> El mapa dibuja los nombres de las
+vías principales desde el zoom 11 y los de las vías secundarias desde el zoom 15, así que un
+archivo cortado con un <code>--maxzoom</code> bajo (por ejemplo 10) muestra nombres de
+ciudades pero no de calles. Omita <code>--maxzoom</code> para el detalle completo (zoom 15).
+Corte solo el área de su caso: un área metropolitana ocupa unos 28 MB, y un continente
+entero mucho más.</p>
+<p><strong>Ejemplo: toda América del Norte.</strong></p>
+<pre><code>pmtiles extract https://build.protomaps.com/20260902.pmtiles north-america.pmtiles --bbox=-170,7,-50,84 --maxzoom=10</code></pre>
+<ul>
+  <li>El recuadro cubre Canadá, EE.&nbsp;UU., México, América Central y el Caribe. Deja fuera
+    el extremo occidental de las islas Aleutianas y el este de Groenlandia, e incluye las
+    puntas norte de Colombia y Venezuela.</li>
+  <li>Cortado al zoom 10, ocupó unos 980 MB. Muestra ciudades, regiones y accidentes
+    principales, pero no nombres de calles.</li>
+  <li>GLEAPP guarda su propia copia del archivo al importarlo, así que deje espacio para
+    ambos.</li>
+  <li>Para tener nombres de calles donde está su evidencia, corte también esa área con el
+    detalle completo (sin <code>--maxzoom</code>), impórtela y elíjala como mapa base activo.
+    Solo uno está activo a la vez, así que alterne entre los dos en la lista Mapas.</li>
+</ul>
+
+<p>Se aceptan dos tipos de archivo. Una región <strong>.pmtiles</strong> es la recomendada.
+GLEAPP Map Downloader (<code>github.com/abrignoni/GLEAPP-MapDownloader</code>) la corta desde
+una ventana, leyendo solo los mosaicos dentro del área, con versiones para Windows, macOS y
+Linux. Tanto esa herramienta como <code>pmtiles</code> leen el servidor de Protomaps, que ve
+el área que usted pide, así que ejecútelas en una computadora que no sea la estación de
+revisión. Para usar la herramienta <code>pmtiles</code>, instálela desde
+<code>github.com/protomaps/go-pmtiles/releases</code>, elija una compilación planetaria
+reciente de Protomaps (<code>https://build.protomaps.com/YYYYMMDD.pmtiles</code>) y corte su
+área con un recuadro, oeste, sur, este, norte en grados decimales, por ejemplo
+<code>pmtiles extract https://build.protomaps.com/20260902.pmtiles dc.pmtiles
+--bbox=-77.12,38.79,-76.90,38.99</code>. Eso lee solo los mosaicos dentro del recuadro; un
+área metropolitana son decenas de megabytes y un país pequeño menos de cien, con detalle a
+nivel de calle. Un <strong>.mbtiles</strong> ráster hecho con QGIS o MapTiler Desktop también
+sirve, para un mapa que ya tenga; no se aceptan MBTiles vectoriales. Las mismas acciones
+existen en la línea de comandos como <code>gleapp maps list | import | remove | use</code>.</p>
+<p>Las compilaciones de Protomaps son datos de OpenStreetMap bajo la licencia ODbL, y el mapa
+muestra el crédito "&copy; OpenStreetMap contributors" que pide esa licencia, como texto
+simple y no como enlace, porque un enlace sería la única dirección externa de la página.</p>
+
+<h2 id="credits">20. Créditos y agradecimientos</h2>
+<p>GLEAPP se apoya en el trabajo de muchas otras personas.</p>
+<p>La tabla de abajo nombra cada componente. Los textos completos de las licencias viajan
+dentro de la compilación, porque eso es lo que piden la mayoría de estas licencias:
+<a href="/notices" target="_blank" rel="noopener">abrir los avisos de terceros</a>.
+Incluye la licencia MIT del propio GLEAPP, los lectores incluidos, los modelos de rostros, el
+código, los estilos y las fuentes de los mapas, y el texto de cada paquete incluido.
+This product includes software developed by SecureAuth Corporation
+(https://www.secureauth.com/) and Fortra (https://www.fortra.com).</p>
+
+<h3>Bibliotecas sobre las que se construye GLEAPP</h3>
+<table>
+  <tr><td><strong>Python</strong></td><td>el entorno de ejecución: Python Software Foundation (licencia PSF)</td></tr>
+  <tr><td><strong>Pillow</strong></td><td>decodificación/codificación de imágenes, miniaturas, EXIF: Jeffrey&nbsp;A.&nbsp;Clark y colaboradores, una bifurcación de PIL de Fredrik&nbsp;Lundh (HPND)</td></tr>
+  <tr><td><strong>pi-heif</strong> + <strong>libheif</strong></td><td>decodificación HEIC / HEIF: Alexander&nbsp;Piskun; libheif de Dirk&nbsp;Farin / struktur&nbsp;AG (código BSD-3; wheels LGPL-3: libheif, libde265)</td></tr>
+  <tr><td><strong>OpenCV</strong> (opencv-python-headless)</td><td>decodificación de video y fotogramas clave, operaciones de espacio de color, inferencia DNN: equipo de OpenCV; wheels de Olli-Pekka&nbsp;Heinisuo (Apache-2.0; las wheels incluyen FFmpeg, LGPL-2.1 en Windows y GPL en macOS, así que la compilación de macOS toma OpenCV de conda-forge con FFmpeg fijado a su compilación LGPL)</td></tr>
+  <tr><td><strong>NumPy</strong></td><td>el cálculo con arreglos detrás del hashing y la detección: desarrolladores de NumPy (BSD-3)</td></tr>
+  <tr><td><strong>ImageHash</strong></td><td>hashes perceptuales aHash / pHash / dHash, la base de <em>buscar similares</em>, el apilado de duplicados visuales y el agrupamiento de casi duplicados: Johannes&nbsp;Buchner (BSD-2)</td></tr>
+  <tr><td><strong>texture2ddecoder</strong></td><td>decodificación de texturas de GPU (ASTC / PVRTC / ETC / BCn, KTX): Rudolf&nbsp;Kolbe (K0lb3) (MIT)</td></tr>
+  <tr><td><strong>pyliblzfse</strong> + <strong>LZFSE</strong></td><td>recursos de Apple comprimidos con LZFSE: Ivan&nbsp;Kozík (bindings); LZFSE de Apple&nbsp;Inc. (BSD-3)</td></tr>
+  <tr><td><strong>python-zstandard</strong> + <strong>Zstandard</strong></td><td>recursos comprimidos con Zstd: Gregory&nbsp;Szorc (bindings); Zstd de Meta / Yann&nbsp;Collet (BSD-3)</td></tr>
+  <tr><td><strong>py7zr</strong> (+ pyppmd, pybcj, inflate64, brotli, pycryptodomex)</td><td>lectura de archivos <code>.7z</code> encontrados dentro de un origen: Hiroshi&nbsp;Miura y colaboradores (LGPL-2.1 / MIT / BSD)</td></tr>
+  <tr><td><strong>argon2-cffi</strong> (+ argon2-cffi-bindings)</td><td>derivación de claves Argon2, para abrir un contenedor LUKS2: Hynek&nbsp;Schlawack y colaboradores (MIT)</td></tr>
+  <tr><td><strong>pypdf</strong> (+ pycryptodome)</td><td>lectura de las imágenes y archivos incrustados dentro de un PDF, incluido uno cifrado: Mathieu&nbsp;Fenniak y colaboradores; pycryptodome de Helder&nbsp;Eijs (BSD-3 / BSD-2 y dominio público)</td></tr>
+  <tr><td><strong>Flask</strong> y el conjunto <strong>Pallets</strong></td><td>el servidor local de la galería de revisión: Werkzeug, Jinja, Click, MarkupSafe, ItsDangerous, Blinker: Armin&nbsp;Ronacher y colaboradores (BSD-3)</td></tr>
+  <tr><td><strong>tzdata</strong> / <strong>IANA Time Zone Database</strong></td><td>conversión de zonas horarias y horario de verano para el ajuste de zona horaria de visualización: IANA (dominio público); paquete de PyPI del equipo de CPython</td></tr>
+  <tr><td><strong>SQLite</strong></td><td>la base de datos del caso, mediante el <code>sqlite3</code> de Python: D.&nbsp;Richard&nbsp;Hipp y el equipo de SQLite (dominio público)</td></tr>
+  <tr><td><strong>pywebview</strong></td><td>la ventana de escritorio nativa de la compilación sin conexión: Roman&nbsp;Sirokov y colaboradores (BSD-3)</td></tr>
+  <tr><td><strong>MapLibre GL JS</strong></td><td>dibuja el mapa sin conexión en la galería: colaboradores de MapLibre (BSD-3)</td></tr>
+  <tr><td><strong>PMTiles</strong> + <strong>pmtiles.js</strong></td><td>el formato de mosaicos en un solo archivo del que se lee el mapa base: Protomaps (especificación de dominio público; código de referencia BSD-3)</td></tr>
+  <tr><td><strong>Estilo de mapa base de Protomaps</strong> y sprites</td><td>el aspecto del mapa: Protomaps (código BSD-3, diseño del estilo CC0; íconos de sprites derivados de tangrams/icons, con licencia MIT)</td></tr>
+  <tr><td><strong>Noto Sans</strong></td><td>los glifos de las etiquetas del mapa: Google (SIL Open Font License)</td></tr>
+  <tr><td><strong>OpenStreetMap</strong></td><td>los datos de un mapa base de Protomaps que usted importa: &copy; colaboradores de OpenStreetMap (ODbL); acreditados en el mapa como pide la licencia</td></tr>
+  <tr><td><strong>Microsoft Edge WebView2 Runtime</strong></td><td>la vista web que usa la ventana de escritorio en Windows: Microsoft. Viene con Windows y <strong>no</strong> se incluye (propietario, no se redistribuye)</td></tr>
+  <tr><td><strong>Ensamblados del SDK de WebView2</strong></td><td>incluidos por pywebview e idénticos byte a byte a Microsoft.Web.WebView2&nbsp;1.0.3856.49 de NuGet: Microsoft (BSD-3-Clause; el texto va en los avisos)</td></tr>
+  <tr><td><strong>PyInstaller</strong></td><td>la compilación de <code>GLEAPP.exe</code>: the PyInstaller Development Team (GPL-2.0 con excepción para el bootloader)</td></tr>
+  <tr><td><strong>pytest</strong>, <strong>piexif</strong></td><td>solo desarrollo y pruebas, no se incluyen: Holger&nbsp;Krekel y pytest-dev; hMatoba (MIT)</td></tr>
+  <tr><td><strong>pillow-heif</strong></td><td>solo desarrollo, no se incluye: escribe el archivo HEIC de prueba, que necesita el codificador x265 que pi-heif omite: Alexander&nbsp;Piskun (código BSD-3; wheels GPLv2)</td></tr>
+</table>
+<p>La interfaz web es JavaScript y CSS puros escritos a mano: sin framework de front-end,
+sin empaquetador, sin fuentes web, nada cargado desde un CDN.</p>
+
+<h3>Buscar similares, contenido similar (sección&nbsp;9)</h3>
+<p><strong>DINOv2-small</strong> (Maxime Oquab et al., Meta AI, "DINOv2: Learning Robust
+Visual Features without Supervision", 2023), Apache-2.0: los pesos
+<code>facebook/dinov2-small</code> de Meta (revisión <code>ed25f3a3</code> de Hugging Face),
+convertidos a ONNX para GLEAPP (<code>gleapp/models/dinov2_small.onnx</code>). El texto de
+la licencia va a su lado en <code>gleapp/models/LICENSE-dinov2</code>, como exige la
+licencia.</p>
+
+<h3>Detección de rostros / piel (sección&nbsp;10)</h3>
+<ul>
+  <li><strong>YuNet</strong>: el detector de rostros incluido
+    (<code>face_detection_yunet_2023mar.onnx</code>, ~230&nbsp;KB), una red neuronal
+    convolucional liviana de detección de rostros de <strong>Shiqi&nbsp;Yu</strong>,
+    <strong>Wei&nbsp;Wu</strong> y <strong>Yuantao&nbsp;Feng</strong>, distribuida a través
+    del proyecto <strong>OpenCV&nbsp;Zoo</strong> (MIT). Se ejecuta en la CPU mediante el
+    módulo DNN de OpenCV. El texto completo de la licencia va con el modelo en
+    <code>gleapp/models/LICENSE-yunet</code>, como exige la licencia.</li>
+  <li><strong>SFace</strong>: el modelo de reconocimiento facial incluido detrás de "buscar
+    rostros coincidentes" (<code>face_recognition_sface_2021dec.onnx</code>,
+    ~39&nbsp;MB). Aportado por <strong>Yaoyao&nbsp;Zhong</strong> (basado en la pérdida SFace
+    descrita en Zhong et&nbsp;al.,
+    <a href="https://github.com/zhongyy/SFace">"SFace: Sigmoid-Constrained Hypersphere Loss
+    for Robust Face Recognition"</a>), conversión a ONNX de
+    <strong>Chengrui&nbsp;Wang</strong>, distribuido a través del proyecto
+    <strong>OpenCV&nbsp;Zoo</strong> bajo la <strong>Apache&nbsp;License&nbsp;2.0</strong>.
+    Se ejecuta en la CPU mediante el módulo DNN de OpenCV; ningún rostro ni vector sale nunca
+    del caso. El texto completo de la licencia va con el modelo en
+    <code>gleapp/models/LICENSE-sface</code>, como exige la licencia.</li>
+  <li>Alternativa <strong>Haar cascade</strong>
+    (<code>haarcascade_frontalface_default.xml</code>): entrenada por
+    <strong>Rainer&nbsp;Lienhart</strong>; viene dentro de OpenCV.</li>
+  <li>La <strong>proporción de tono de piel</strong> no usa ningún modelo: una medición simple
+    de rangos de color HSV + YCrCb, el enfoque clásico de la literatura de detección de piel
+    (p. ej., Kovač, Peer y Solina, 2003).</li>
+</ul>
+
+<h3>Búsqueda de similitud y eliminación de duplicados (sección&nbsp;9)</h3>
+<p><em>Buscar similares</em>, el apilado de duplicados visuales
+(<strong>&asymp;&nbsp;N</strong>) y los grupos de casi duplicados se construyen sobre los
+hashes perceptuales de <strong>ImageHash</strong>. La idea del hash perceptual / pHash se
+debe a <strong>Neal&nbsp;Krawetz</strong> ("Looks&nbsp;Like&nbsp;It") y a
+<strong>Christoph&nbsp;Zauner</strong> (pHash.org). El resto, el orden por distancia de
+Hamming, la segmentación LSH que mantiene el agrupamiento de casi duplicados fuera de
+O(n&sup2;) y la comparación de video por fotograma clave, es código propio de GLEAPP, sin
+ninguna biblioteca adicional.</p>
+
+<h3>Lectura de imágenes de disco y vistas de almacenamiento de Android (secciones&nbsp;1&nbsp;y&nbsp;16)</h3>
+<p>La lectura de una <strong>imagen de disco</strong> (recorrer sus sistemas de archivos,
+unir un conjunto en bruto dividido, recuperar medios eliminados por carving, y el plegado de
+vistas de almacenamiento que reduce a una sola fila las varias copias de una foto de Android
+en distintos puntos de montaje) se construye sobre herramientas que
+<strong>Alexis&nbsp;Brignoni</strong> escribió con este fin, incluidas sin modificar en
+<code>gleapp/vendor/</code> (cada una con su propio archivo de licencia,
+<code>gleapp/vendor/LICENSE-&lt;name&gt;</code>):</p>
+<ul>
+  <li><strong><a href="https://github.com/abrignoni/qnxprobe">qnxprobe</a></strong>
+    lee los sistemas de archivos de una adquisición (NTFS, APFS, HFS+, ext, F2FS, FAT32,
+    exFAT y más), encuentra las particiones y une los segmentos numerados de una imagen en
+    bruto dividida.</li>
+  <li><strong><a href="https://github.com/abrignoni/ewfprobe">ewfprobe</a></strong>
+    presenta una adquisición EnCase/EWF (<code>.E01</code>, <code>.s01</code>), EWF2
+    (<code>.Ex01</code>), AFF, AFM, AFF4 o de imagen de disco de Apple, o un disco de máquina
+    virtual, como una imagen de disco en la que se puede buscar, reconstruyendo los bloques a
+    través de los segmentos; qnxprobe lo importa para abrir una.</li>
+  <li><strong><a href="https://github.com/abrignoni/mediacarve">mediacarve</a></strong>
+    busca firmas de imagen/video en el espacio no asignado (o en todo el disco) cuando se
+    pide un carving.</li>
+  <li><strong><a href="https://github.com/abrignoni/exoprobe">exoprobe</a></strong>
+    lee las cachés de medios que las apps de Android mantienen mediante ExoPlayer, une los
+    fragmentos de cada elemento en caché y los segmentos de cada flujo DASH, y pone un video y
+    su audio en un solo MP4.</li>
+</ul>
+<p>Las cuatro tienen licencia MIT, &copy; Alexis&nbsp;Brignoni. La tabla de vistas de
+almacenamiento de Android de GLEAPP (<code>gleapp/storage_views.py</code>), que sabe que el
+almacenamiento cifrado por credenciales, el cifrado por dispositivo y el compartido nunca se
+pliegan entre sí, está portada de <code>scripts/artifacts/storagePathViews.py</code> de
+<strong>ALEAPP</strong> (también de Alexis&nbsp;Brignoni, licencia MIT).</p>
+
+<h3>Estándares de datos y datos de referencia (los aporta usted; no se incluye ninguno)</h3>
+<ul>
+  <li><strong>Project&nbsp;VIC</strong>: Project&nbsp;VIC International. El esquema de
+    categorías bloqueado de GLEAPP (códigos 0–5) es el modelo de datos VICS de
+    Project&nbsp;VIC&nbsp;2.0 (EE.&nbsp;UU.), y GLEAPP lee y escribe el formato de caso JSON de
+    Project&nbsp;VIC.</li>
+  <li><strong>NSRL&nbsp;RDS</strong>: el National Software Reference Library Reference Data
+    Set, producido por el <strong>NIST</strong> (dominio público). GLEAPP lo importa; no lo
+    incluye.</li>
+  <li><strong>CAID</strong>: el manejo de listas de hashes CSV al estilo CAID sigue el formato
+    de exportación de la Child Abuse Image Database del Home Office del Reino Unido.</li>
+</ul>
+
+<h3>Inspiración</h3>
+<p>GLEAPP forma parte de la familia <strong>LEAPP</strong> de analizadores forenses de código
+abierto, junto con <strong>ALEAPP</strong>, <strong>iLEAPP</strong>, <strong>RLEAPP</strong>
+y los demás, el proyecto que inició <strong>Alexis&nbsp;Brignoni</strong> y que construye una
+gran comunidad de colaboradores. GLEAPP continúa el nombre, el diseño y la filosofía de ese
+proyecto.</p>

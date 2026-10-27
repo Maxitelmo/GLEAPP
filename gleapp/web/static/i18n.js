@@ -174,7 +174,8 @@
     };
   }
 
-  window.i18n = { lang, t, tr, apply, picker, help: cfg.help || "/static/help.html" };
+  window.i18n = { lang, t, tr, apply, picker, help: cfg.help || "/static/help.html",
+                  helpStale: !!cfg.help_stale };
   if (lang === "en" || !Object.keys(messages).length) return;
 
   for (const name of ["alert", "confirm", "prompt"]) {

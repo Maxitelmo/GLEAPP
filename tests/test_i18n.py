@@ -107,9 +107,11 @@ def test_the_page_gets_the_language_its_browser_asks_for():
     assert es["lang"] == "es" and es["setting"] == "auto"
     assert es["messages"]["Recent cases"] == "Casos recientes"
     assert es["languages"] == {"en": "English", "es": "Español"}
+    assert es["help"] == "/static/help.es.html"
+    assert es["help_stale"] == i18n.help_stale("es")
     en = _served(cl, **{"Accept-Language": "en-US,en;q=0.9"})
     assert en["lang"] == "en" and en["messages"] == {}
-    assert en["help"] == "/static/help.html"
+    assert en["help"] == "/static/help.html" and en["help_stale"] is False
 
 
 def test_the_examiners_choice_is_kept_app_wide_and_wins():
@@ -130,8 +132,33 @@ def test_the_examiners_choice_is_kept_app_wide_and_wins():
 
 def test_the_manual_follows_the_language_when_it_is_translated():
     assert i18n.help_page("en") == "/static/help.html"
-    want = "/static/help.es.html" if (STATIC / "help.es.html").is_file() else "/static/help.html"
-    assert i18n.help_page("es") == want
+    assert i18n.help_page("es") == "/static/help.es.html"
+    assert i18n.help_page("fr") == "/static/help.html"
+
+
+def test_a_translated_manual_names_the_english_manual_it_was_made_from():
+    for path in sorted(STATIC.glob("help.*.html")):
+        first = path.read_text(encoding="utf-8").splitlines()[0]
+        assert i18n.SOURCE_MARK.search(first), path.name
+
+
+def test_a_translated_manual_older_than_the_english_one_is_said_to_be(tmp_path, monkeypatch):
+    """The English manual changes with the software and the translation follows later,
+    so the page is told when the one it shows was made from another English manual."""
+    import hashlib                                     # pylint: disable=import-outside-toplevel
+    monkeypatch.setattr(i18n, "STATIC", tmp_path)
+    english = tmp_path / "help.html"
+    english.write_bytes(b"<h2>1. Getting started</h2>\n")
+    digest = hashlib.sha256(english.read_bytes()).hexdigest()
+    (tmp_path / "help.xx.html").write_text(
+        f"<!-- translated-from-sha256: {digest} -->\n<h2>1. Xx</h2>\n", encoding="utf-8")
+    assert i18n.help_stale("xx") is False
+    assert i18n.help_stale("en") is False
+    assert i18n.help_stale("yy") is False              # no translation: the English one is shown
+    english.write_bytes(b"<h2>1. Getting started</h2>\n<p>New.</p>\n")
+    assert i18n.help_stale("xx") is True
+    (tmp_path / "help.xx.html").write_text("<h2>1. Xx</h2>\n", encoding="utf-8")
+    assert i18n.help_stale("xx") is True                # no mark says what it was made from
 
 
 def test_the_catalog_is_loaded_before_the_page_and_app_js():
