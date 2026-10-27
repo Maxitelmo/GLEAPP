@@ -614,6 +614,7 @@ folders / a JSON job, then watch processing progress, no CLI needed.
 | Filters | sidebar: **Clear all filters**; search, type, category, source, cluster, **duplicates** (any / exact / visual / near-dup), has-faces, min skin ratio, has-GPS, known-hash hit, **hide known-NSRL**, processing error, collapse duplicates. Sort / per-page / tile-size live on the grid's top bar |
 | Export | **Export report** button → dialog: pick scope (All / **Categorized only** / **Uncategorized only** / Selected) and formats (HTML, CSV, JSON, KMZ, **MD5 list**, Project VIC). Scoped files get a suffixed name (`report_categorized.csv`) |
 | Manual | **? Help** in the header, or press `?` |
+| Language | the selector beside the menu, on the launcher and in a case: English or Español (the interface and the manual), or **System language**, which follows the system's and falls back to English. Kept in your user settings. File names, paths, metadata, category and flag names, reports and exports stay as they are; see `gleapp/i18n.py` for adding a language |
 | Export MD5s | selection bar / right-click **Export MD5s** → `<case>/reports/md5_<timestamp>.csv`, one distinct hash per row under an `md5` header |
 
 Each tile shows a **color bar with the category name** along its bottom, tinted

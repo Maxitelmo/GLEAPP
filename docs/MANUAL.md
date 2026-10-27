@@ -28,6 +28,13 @@ opening again. **Watch intro** in the launcher's **☰ Menu** (or under *Help* i
 case's **☰ Menu**) plays it again and lets you turn it back on. The choice is kept in
 your user settings, not in any case.
 
+The interface language is chosen with the selector beside the menu, on the launcher
+and in an open case: **System language** follows the operating system's (or the
+browser's) language when there is a translation of it, and English otherwise. The choice
+is kept in your user settings. It changes the interface and the manual only: file
+names, paths, metadata, category and flag names, and reports and exports stay as they
+are.
+
 - **Recent cases**: click to reopen. Only cases that contain files are listed,
   each with its live file count.
 - **Open existing case**: point at a folder containing `case.gleapp`, or at the
@@ -1796,6 +1803,11 @@ defensibility. GLEAPP does not bundle, and cannot identify, any illegal
 content; it identifies *known files* (via hashes you supply, including your
 own **local hash stash**) and surfaces *signals*, and the categorization is
 always your professional judgment.
+
+The interface translation is local too: the language catalog ships with GLEAPP and is
+applied in the page, and no text is sent to a translation service. File names, paths,
+metadata and category and flag names are marked so that a browser's own translation
+leaves them alone as well.
 
 The **local hash stash** (section 12) contains MD5 hash values only, no file
 content, names or paths, of files you categorized 1-3. It never leaves your

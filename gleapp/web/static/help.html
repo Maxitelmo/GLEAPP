@@ -42,6 +42,11 @@ startup</strong> to stop it opening again. <strong>Watch intro</strong> in the l
 <strong>☰ Menu</strong> (or under <em>Help</em> in a case's <strong>☰ Menu</strong>) plays it
 again and lets you turn it back on. The choice is kept in your user settings, not in any
 case.</p>
+<p>The interface language is chosen with the selector beside the menu, on the launcher and
+in an open case: <strong>System language</strong> follows the operating system's (or the
+browser's) language when there is a translation of it, and English otherwise. The choice is
+kept in your user settings. It changes the interface and the manual only: file names, paths,
+metadata, category and flag names, and reports and exports stay as they are.</p>
 <ul>
   <li><strong>Recent cases</strong>: click to reopen. Only cases that contain files
   are listed, each with its live file count.</li>
@@ -306,6 +311,7 @@ server-side across the whole result set, not just the visible page.</p>
   <tr><td><strong>&#8676;&nbsp;Close case</strong></td><td>Snapshots first.</td></tr>
   <tr><td><strong>Details pane</strong>, <strong>Export report</strong></td><td>Toggle the pane; open the export dialog.</td></tr>
   <tr><td><strong>&#8635;&nbsp;Refresh</strong></td><td>Re-runs the current filter, so files that no longer match (e.g. ones you just categorized) drop out.</td></tr>
+  <tr><td><strong>Language</strong></td><td>The interface language (&sect;1).</td></tr>
   <tr><td><strong>&#128276;</strong></td><td>Lists recent report exports.</td></tr>
 </table>
 
@@ -1704,6 +1710,10 @@ categorization is always your professional judgment.</p>
 only, no file content, names or paths, of files you categorized 1–3, and never
 leaves your machine unless you <strong>Export</strong> it or point it at a shared
 location.</p>
+<p>The interface translation is local too: the language catalog ships with GLEAPP and is
+applied in the page, and no text is sent to a translation service. File names, paths,
+metadata and category and flag names are marked so that a browser's own translation leaves
+them alone as well.</p>
 
 <h2 id="maps">19. Maps (offline basemaps)</h2>
 <p>GLEAPP ships no map data and fetches none itself, so a subject's coordinates never reach a
