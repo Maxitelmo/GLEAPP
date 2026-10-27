@@ -19,6 +19,7 @@ English.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from functools import lru_cache
@@ -37,6 +38,8 @@ OUT_PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)(\?[^{}]*)?\}")
 # a placeholder that holds an English plural ending ("s", "es", or nothing), which a
 # translation may leave out
 PLURAL_ENDINGS = frozenset({"s", "es"})
+# the first line of a translated manual names the English manual it was translated from
+SOURCE_MARK = re.compile(r"translated-from-sha256: ([0-9a-f]{64})")
 
 
 @lru_cache(maxsize=None)
@@ -90,8 +93,23 @@ def help_page(code: str) -> str:
     return "/static/help.html"
 
 
+def help_stale(code: str) -> bool:
+    """Whether the manual in that language was translated from an English manual other
+    than the one there is now. The English manual is the reference and changes with
+    the software, so a translation is said to be older rather than shown as current
+    (the page puts a note and a link to the English one above it)."""
+    path = STATIC / f"help.{code}.html"
+    if code == DEFAULT or not path.is_file():
+        return False
+    with path.open(encoding="utf-8") as f:
+        mark = SOURCE_MARK.search(f.readline())
+    english = hashlib.sha256((STATIC / "help.html").read_bytes()).hexdigest()
+    return not mark or mark.group(1) != english
+
+
 def client_config(code: str, setting: str | None) -> dict:
     """What the page needs before it draws anything: the language, what the examiner
     chose (``auto`` for none), the choices, the catalog and the manual's URL."""
     return {"lang": code, "setting": setting or "auto", "languages": languages(),
-            "messages": messages(code), "help": help_page(code)}
+            "messages": messages(code), "help": help_page(code),
+            "help_stale": help_stale(code)}

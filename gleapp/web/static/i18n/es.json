@@ -1103,6 +1103,8 @@
   "{n} file(s) from {k} source(s)": "{n} archivo(s) de {k} origen(es)",
   "folder": "carpeta",
   "spec": "especificación",
-  "System language ({name})": "Idioma del sistema ({name})"
+  "System language ({name})": "Idioma del sistema ({name})",
+  "This translation was made from an earlier version of the manual. The English manual is the reference:": "Esta traducción se hizo a partir de una versión anterior del manual. El manual en inglés es la referencia:",
+  "open the English manual": "abrir el manual en inglés"
  }
 }
