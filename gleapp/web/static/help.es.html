@@ -1,4 +1,4 @@
-<!-- Spanish translation of help.html. translated-from-sha256: 652989de6e2588db0da8c5c8f788beec18379ed108e349d9a1b081248c5ddf66
+<!-- Spanish translation of help.html. translated-from-sha256: 326d5660850c9ecef8692ec580ca1f55de87104792d2f238abb353f8a69fb866
      The English manual is the reference. gleapp/i18n.py compares this hash with the
      current help.html and the page says so when the translation is older. -->
 <p><img src="/static/gleapp-logo.png" alt="Logo de GLEAPP" width="96" height="96"></p>
@@ -89,7 +89,10 @@ exportaciones quedan como están.</p>
           una imagen en bruto (un <code>.img</code>/<code>.dd</code>, o cualquier segmento
           de un conjunto dividido como <code>.001</code>, <code>.002</code>). Las imágenes
           en bruto se identifican por su contenido, no por la extensión. Un conjunto
-          dividido al que le falta un segmento se rechaza, indicando el hueco.
+          dividido al que le falta un segmento se rechaza, indicando el hueco, y también
+          uno cuyos segmentos anteriores al último no tienen todos el mismo tamaño (un
+          segmento cortado pone cada byte posterior en el desplazamiento equivocado); si un
+          conjunto así está completo tal como está, únalo en un solo archivo.
             <ul>
               <li>Los sistemas de archivos se recorren archivo por archivo, así que cada
               archivo conserva el nombre, la ruta y las fechas que registró el sistema de
@@ -156,6 +159,10 @@ contraídas hasta que haga clic):</p>
   <li><em>Preprocesamiento de rostros / tono de piel</em>: activado por defecto; también
   puede ejecutarse después.</li>
   <li><em>Fotogramas clave de vista previa de video</em>: 6 por defecto.</li>
+  <li><em>Archivos procesados a la vez</em>: por defecto, la cantidad de procesadores
+  lógicos del equipo, como máximo 16. El formulario muestra cuántos tiene el equipo, y el
+  control deslizante llega hasta ese número (como máximo 32). Bajarlo deja más procesador
+  libre mientras se procesa un caso, y tarda más.</li>
   <li><em>Copiar los medios de la extracción/adquisición al caso</em>: desactivado, el
   caso queda pequeño pero el archivo debe quedarse en su lugar. Activado, el caso es
   autónomo.</li>
@@ -174,6 +181,10 @@ contraídas hasta que haga clic):</p>
   misma casilla.</li>
   <li><em>Recuperar medios</em>: solo imágenes de disco, desactivado por defecto
   (&sect;16).</li>
+  <li><em>Leer credenciales de contenido (C2PA)</em>: desactivado por defecto. Después del
+  procesamiento, lee lo que cada imagen y video declara sobre su procedencia (&sect;8,
+  Credenciales de contenido). Desactivado, no se lee nada; léalas después desde la barra
+  lateral. El diálogo <strong>+&nbsp;Agregar evidencia</strong> tiene la misma casilla.</li>
   <li><em>Activar la comparación con la reserva de hashes</em>: activado por defecto.
   Desactívelo en un caso que no esté relacionado con CSAM / Project VIC, para que una
   coincidencia antigua de la reserva no vuelva a marcar medios no relacionados. Puede
@@ -388,6 +399,8 @@ encima.</p>
   <tr><td><span class="tag" style="background:#e5484d">ERR</span></td><td>un error de procesamiento y sin miniatura: el archivo no se pudo decodificar (pase el cursor sobre la miniatura / abra los detalles para ver el motivo)</td></tr>
   <tr><td><span class="tag" style="background:#0e7490">3&#128100;</span></td><td>cantidad de rostros según la detección</td></tr>
   <tr><td>&#128205;</td><td>tiene coordenadas GPS en sus metadatos</td></tr>
+  <tr><td><span class="tag" style="background:#be185d">AI</span></td><td><strong>IA declarada</strong>: un tipo de origen digital que el archivo declara menciona IA generativa, en su manifiesto C2PA, en el manifiesto de un ingrediente o en su XMP (&sect;8, Credenciales de contenido). Es una declaración, no un hallazgo, y no se verifica. Aparece solo cuando el archivo ya se leyó</td></tr>
+  <tr><td><span class="tag" style="background:#334155">CR</span></td><td>el archivo contiene un <strong>almacén de manifiestos C2PA</strong> (credenciales de contenido). No se verifica: un firmante es el que se declara. Aparece solo cuando el archivo ya se leyó</td></tr>
   <tr><td>&#8776;&nbsp;N</td><td>parte de una <strong>pila visual</strong> de N: la misma imagen, recodificada/redimensionada (sombra desplazada azul)</td></tr>
   <tr><td>&#11034;&nbsp;N</td><td>parte de una <strong>pila exacta</strong> de N: copias idénticas byte a byte (sombra desplazada gris)</td></tr>
   <tr><td>&#10003;</td><td>seleccionado (también con un contorno azul y un leve aclarado)</td></tr>
@@ -445,9 +458,11 @@ arriba abajo:</p>
   <tr><td><strong>Fechas</strong></td><td>Captura (EXIF, hora local de la cámara), Creación (SA), Escritura (SA), Acceso (SA), Registrado (tal como se almacenó, sin zona). Vea &sect;3.</td></tr>
   <tr><td><strong>Project&nbsp;VIC</strong></td><td>MediaID, MediaID del registro, serie, etiquetas, marcas. <strong>Exif de VIC, tal como se registró</strong> abre una lista contraída con el Exif que trae el registro VIC, mostrado como texto. No son los metadatos propios del archivo.</td></tr>
   <tr><td><strong>Detección</strong></td><td>Rostros, Proporción de piel</td></tr>
+  <tr><td><strong>Metadatos (ExifTool)</strong></td><td>Una sección contraída bajo la tabla con cada campo que ExifTool lee del archivo. Dentro: un cuadro <strong>Filtrar campos</strong>, que busca en todos los campos por nombre o valor y marca cada coincidencia con su pestaña; una pestaña <strong>Clave</strong>, primero, con los campos que los examinadores suelen buscar, en palabras simples (cámara, objetivo, fecha de toma con su desfase horario, software, número de serie, GPS), tal como están guardados en el archivo; luego una pestaña por cada categoría que tenga el archivo, las mismas categorías que la opción ExifTool de la exportación HTML. Pase el cursor sobre un campo para ver el grupo de ExifTool, y sobre una pestaña para ver qué contiene. <strong>Calc.</strong> contiene valores que ExifTool <em>calcula</em>: no están guardados en el archivo, así que cite el campo guardado del que provienen. Las fechas se muestran como las escribe el archivo. Se lee la primera vez que se abre la sección y se guarda en el caso. ExifTool solo lee; se omiten los campos sobre la copia del examinador. Necesita ExifTool: una compilación que lo incluya, o <code>exiftool</code> instalado.</td></tr>
   <tr><td><strong>Coincidencias</strong></td><td>Coincide en (qué fuentes de hashes lo marcaron), Copias exactas, Visualmente similares, Grupo de similares, Error</td></tr>
-  <tr><td><strong>Ubicación</strong></td><td>GPS, con un botón <strong>Copiar</strong></td></tr>
+  <tr><td><strong>Ubicación</strong></td><td>GPS, con un botón <strong>Copiar</strong>. En una foto proviene del EXIF (grados/minutos/segundos, grados y minutos decimales, o grados decimales), o del XMP cuando el EXIF no tiene; en un video, de sus metadatos QuickTime (GPSCoordinates de UserData, o la clave de ubicación del iPhone). La <strong>Captura</strong> de un video proviene de la fecha de creación del iPhone, en la hora local del dispositivo. Un caso procesado antes de esta versión los obtiene cuando se vuelve a procesar (<code>gleapp process --force</code>, que rehace cada archivo) o cuando se ingesta en un caso nuevo.</td></tr>
   <tr><td><strong>Hashes</strong></td><td>MD5, SHA-1, SHA-256, pHash</td></tr>
+  <tr><td><strong>Credenciales de contenido</strong></td><td>Una sección contraída bajo la tabla, para imágenes y videos: lo que el archivo declara sobre su procedencia, tal como lo guardó la lectura de credenciales de contenido (&sect;8). El estado (<em>Manifiesto C2PA</em>, <em>Solo tipo de origen XMP</em>, <em>No se encontró ninguna</em>, <em>Sin determinar</em> o <em>No leído</em>) e <em>IA declarada</em>; luego cada manifiesto del almacén, el activo al final, con su generador de la declaración, el firmante y el emisor declarados, el sello de tiempo, las acciones, los tipos de origen digital y los ingredientes, y cada declaración XMP. Desde aquí no se lee nada y no se verifica nada. Se recuerda si se dejó abierta.</td></tr>
 </table>
 
 <h3>Vista hexadecimal</h3>
@@ -460,9 +475,11 @@ arriba abajo:</p>
     <code>0x</code>).</li>
 </ul>
 
-<h2 id="categories">7. Categorías: el esquema obligatorio de Project&nbsp;VIC</h2>
-<p>Cada caso se crea con los <strong>códigos 0–5</strong>, el esquema de categorías de
-Project&nbsp;VIC 2.0 (EE.&nbsp;UU.). Están <strong>bloqueados</strong>: no se pueden
+<h2 id="categories">7. Categorías: el esquema regional obligatorio</h2>
+<p>Cada caso se crea con el esquema de categorías bloqueado de su región (vea
+<a href="#regions">Regiones</a> más abajo). En un caso de EE.&nbsp;UU. son los
+<strong>códigos 0–5</strong>, el esquema de categorías de Project&nbsp;VIC 2.0
+(EE.&nbsp;UU.), que se describe aquí. Están <strong>bloqueados</strong>: no se pueden
 renombrar, cambiar de color, reordenar, ocultar ni eliminar (en el editor de
 ⚙&nbsp;Categorías aparecen como solo lectura con un 🔒). Las teclas numéricas coinciden con
 los códigos: <kbd>0</kbd> aplica Non-pertinent, <kbd>1</kbd>–<kbd>4</kbd> aplican los
@@ -511,19 +528,58 @@ nombres de las categorías se muestran en inglés, tal como los define Project&n
     resueltos.</td>
   </tr>
 </table>
+<h3 id="regions">Regiones: los esquemas de categorías de otros países</h3>
+<p>La tabla anterior es el esquema de <strong>Estados Unidos</strong> (Project&nbsp;VIC).
+Otros países y agencias categorizan de otra manera, y GLEAPP también trae sus esquemas
+bloqueados: Australia, Austria, Canadá (inglés y francés), Dinamarca, Estonia, Europol,
+Francia, Irlanda, los Países Bajos, Noruega, Rumania, Corea del Sur, Suecia, Suiza y el
+Reino Unido.</p>
+<ul>
+  <li><strong>El primer inicio lo pregunta.</strong> El lanzador pide su región antes de
+  crear el primer caso, y muestra las categorías, los códigos y las teclas de cada región
+  para que pueda comprobarlos. Cámbiela después desde <strong>☰&nbsp;Menú → Región de
+  categorías</strong> del lanzador, o con <code>gleapp region &lt;ID&gt;</code>
+  (<code>gleapp region</code> solo lista los ID).</li>
+  <li><strong>Se aplica a los casos nuevos.</strong> Cada caso se crea con la región
+  elegida en el momento de crearlo y la conserva, porque los códigos guardados en sus
+  archivos solo significan algo bajo ese esquema. Un caso creado antes de que existieran
+  las regiones es un caso de EE.&nbsp;UU. Un caso cuya región difiere de la actual de la
+  aplicación lo indica en su encabezado.</li>
+  <li><strong>Cada región conserva sus propios códigos y teclas.</strong> En un caso del
+  Reino Unido, por ejemplo, <kbd>0</kbd> es Uncategorised y <kbd>1</kbd>–<kbd>9</kbd> van de
+  SC Category A a Supports Identification, así que sus propias categorías empiezan en el
+  código 10. Las teclas numéricas siguen los atajos propios de la región; sus categorías
+  toman los dígitos que esta deja libres, y una predefinida a la que su región da una
+  tecla de letra (Dinamarca) no tiene tecla en GLEAPP.</li>
+  <li><strong>Las coincidencias benignas conocidas (NSRL)</strong> categorizan un archivo
+  automáticamente solo donde el esquema de la región tiene una categoría no pertinente:
+  EE.&nbsp;UU. y Corea del Sur (código 0) y Europol (código 3, NON PERTINENT). En las demás,
+  el archivo conserva su insignia de benigno conocido y queda sin categoría.</li>
+  <li><strong>Relevantes.</strong> Las categorías que el esquema de una región marca como
+  ilegales son las relevantes: son las que guarda la reserva de hashes (§12) y las que los
+  informes tratan como probatorias. En el esquema de EE.&nbsp;UU. son los códigos 1–3, como
+  antes.</li>
+  <li><strong>Archivos de Project VIC.</strong> Los códigos de categoría se importan y se
+  exportan tal cual, bajo la región del caso. Un archivo VIC nombra la región de su modelo
+  de datos en <code>@odata.context</code> (<code>.../2.0.xml/US/$metadata</code>), y cuando
+  no es la región del caso la importación lo indica, en el encabezado del caso y en el
+  registro de auditoría.</li>
+</ul>
 <p><strong>Agregar las suyas.</strong> "+ Agregar categoría", en el editor de
-⚙&nbsp;Categorías, crea el <strong>código 6</strong> en adelante. Sus categorías se pueden
+⚙&nbsp;Categorías, crea el <strong>código 6</strong> en adelante (en un caso de
+EE.&nbsp;UU.; por encima de las predefinidas de la región en cualquier otro). Sus categorías se pueden
 editar por completo: renombrar, cambiar de color (haga clic en la muestra de color junto al
 nombre), eliminar (mientras están en uso se eliminan de forma lógica, así que las
 etiquetas se conservan) y arrastrar para reordenar (siempre se ordenan después de las
-predefinidas). Las cuatro primeras reciben, en orden, los atajos de teclas numéricas 6–9 y
-empiezan con un color asignado automáticamente.</p>
+predefinidas). Las cuatro primeras reciben, en orden, los atajos de teclas numéricas 6–9
+(los dígitos que la región deja libres, en otra región) y empiezan con un color asignado
+automáticamente.</p>
 <p><strong>Llevar sus categorías y marcas a otros casos.</strong> En el editor de
 ⚙&nbsp;Categorías o de ⚙&nbsp;Marcas, <strong>Guardar como mi conjunto…</strong> conserva
 las categorías propias de este caso y, si lo marca, sus marcas, para otros casos. Cada parte
 tiene su propia casilla, así que las marcas solo viajan cuando usted lo elige. Solo se
-guardan las categorías con nombre y visibles; las predefinidas de Project VIC (0–5) ya
-están en todos los casos y nunca se guardan. Guardar una parte reemplaza lo que había
+guardan las categorías con nombre y visibles; las predefinidas de la región (0–5 en un
+caso de EE.&nbsp;UU.) ya están en todos los casos y nunca se guardan. Guardar una parte reemplaza lo que había
 guardado de ella antes (el diálogo lo advierte); la parte que deja sin marcar queda como
 estaba. El conjunto se guarda en <code>categories.json</code>, en la carpeta de
 configuración de GLEAPP (<code>%APPDATA%\GLEAPP</code> en Windows), fuera de cualquier
@@ -532,15 +588,18 @@ caso.</p>
 &sect;1), o <strong>Agregar mi conjunto guardado…</strong>, en cualquiera de los dos
 editores, lo agrega al caso abierto. Se omiten los nombres que el caso ya tiene (sin
 distinguir mayúsculas), y una categoría oculta en el caso se vuelve a mostrar. Una
-categoría conserva su código guardado, para que sea el mismo número en todos los casos y en
-todas las exportaciones de Project VIC. Si el caso ya usa ese código para otra categoría,
+categoría conserva su código guardado, para que sea el mismo número en todos los casos. Si
+el caso ya usa ese código para otra categoría,
 recibe el siguiente código libre y el resultado lo indica. Cada guardado y cada agregado se
 escriben en el registro de auditoría del caso. Es una copia, no un vínculo: editar las
 categorías de un caso nunca cambia el conjunto guardado, y guardar un conjunto nuevo nunca
 cambia un caso anterior.</p>
 <p><strong>JSON de Project VIC.</strong> Un <code>Category</code> de 0 se importa como
 Non-pertinent; una categoría vacía (<code>null</code>) o 5 se importa como Uncategorized. Al
-exportar, Uncategorized se escribe como <code>null</code>.</p>
+exportar, Uncategorized se escribe como <code>null</code>, y también una categoría que usted
+agregó: Project VIC no tiene código para ella, así que el archivo llevaría un número suelto
+que nadie puede interpretar. La categoría queda en el caso, y la exportación indica cuántas
+entradas salieron así.</p>
 <p><strong>Casos creados con un GLEAPP anterior.</strong> Antes del esquema v18, GLEAPP
 guardaba estos dos códigos al revés (0 Uncategorized, 5 Non-pertinent). La primera vez que
 esta versión abre un caso así, los intercambia en cada archivo y categoría, para que cada
@@ -640,6 +699,15 @@ se registra en el Historial de procesamiento.</p>
     <strong>Carving de medios eliminados</strong> / <strong>Hacer carving otra
     vez</strong>: vea &sect;16.</li>
 </ul>
+
+<h3>Credenciales de contenido</h3>
+<p>Lo que una imagen o un video declara sobre su propia procedencia: un <strong>almacén de manifiestos C2PA</strong> (credenciales de contenido: quién lo firmó, con qué herramienta, las acciones y los tipos de origen digital que declara, los archivos a partir de los que se hizo) y un <strong>tipo de origen digital IPTC</strong> en su XMP. GLEAPP los lee con <a href="https://github.com/abrignoni/c2pareader">c2pareader</a>, el mismo lector que usan iLEAPP y ALEAPP.</p>
+<p>No se lee nada hasta que usted lo pide. Marque <em>Leer credenciales de contenido (C2PA)</em> al crear el caso o al agregar evidencia, o pulse <strong>Leer credenciales de contenido</strong> en esta sección para leer cada imagen y video que aún no se haya leído. Cuando ya se leyeron todos, el botón vuelve a leerlos todos. En la línea de comandos, <code>gleapp provenance</code> hace lo mismo, <code>--reread</code> vuelve a leer todo, y <code>--c2pa</code> en <code>ingest</code> o <code>process</code> lee después del procesamiento.</p>
+<ul>
+  <li><strong>Credenciales</strong>: <em>Cualquiera declarada (C2PA o XMP)</em>; <em>Manifiesto C2PA</em> (el archivo contiene un almacén de manifiestos); <em>Solo tipo de origen XMP</em> (no hay almacén de manifiestos, pero su XMP declara un tipo de origen digital, que nada firma); <em>No se encontró ninguna</em> (se leyó todo el contenedor y no contiene ninguno de los dos); <em>Sin determinar</em> (la lectura se detuvo antes, o el contenedor no es uno que el lector recorra, así que no se establece la ausencia); <em>No leído</em>.</li>
+  <li><strong>IA declarada</strong>: <em>Sí</em> para los códigos IPTC cuya definición menciona IA generativa (trainedAlgorithmicMedia, compositeWithTrainedAlgorithmicMedia, compositeSynthetic), <em>No</em> para los códigos de captura, escaneo, edición humana, captura de pantalla e imagen de software, <em>Desconocido</em> para cualquier otro código. Lee todos los manifiestos del almacén y todas las declaraciones XMP, así que un archivo cuyo ingrediente se hizo con IA es <em>Sí</em> aunque su propio manifiesto no declare ningún código.</li>
+</ul>
+<p>Lo que esto no hace: <strong>no se verifica nada</strong>. No se comprueba ninguna firma ni se construye ninguna cadena de certificados, así que un firmante es el que el archivo declara, una pista para corroborar y no una prueba de quién lo hizo. <em>IA declarada</em> es una declaración, no un hallazgo. Un archivo sin credenciales no dice nada sobre su autenticidad: muchas plataformas y herramientas las eliminan.</p>
 
 <h3>Archivos comprimidos y documentos</h3>
 <ul>
@@ -1144,8 +1212,8 @@ contenido; la reserva contiene solo hashes de archivos que <em>usted</em> catego
 <ol>
   <li>Trabaje un caso como de costumbre: categorice archivos con los códigos 1, 2 y 3.</li>
   <li>Haga clic en <strong>&#9776;&nbsp;Menú &rarr; Referencia &rarr; Reserva&nbsp;de&nbsp;hashes</strong>.
-    El panel muestra cuántos archivos de este caso son elegibles (categoría 1–3, con un MD5
-    distinto del de un archivo vacío) y los totales actuales de la reserva.</li>
+    El panel muestra cuántos archivos de este caso son elegibles (una categoría relevante
+    de la región del caso, 1–3 en EE.&nbsp;UU., con un MD5 distinto del de un archivo vacío) y los totales actuales de la reserva.</li>
   <li>Haga clic en <strong>Agregar los hashes de este caso a la reserva</strong>. Cada MD5
     elegible se guarda con su código y el nombre del caso como nota de origen. El archivo de
     la reserva se crea la primera vez.</li>
@@ -1182,6 +1250,11 @@ contenido; la reserva contiene solo hashes de archivos que <em>usted</em> catego
     reserva <code>.hstash</code> o <code>.csv</code> a la suya (una exportación anterior con
     nombre <code>.gleapp</code> también funciona); en cualquier hash que se superponga gana el
     código más grave</td></tr>
+  <tr><td><strong>Combinar un conjunto de hashes externo ya categorizado...</strong></td><td>incorpora
+    MD5 que otra herramienta ya categorizó, desde un archivo JSON de registros que llevan cada
+    uno un <code>MD5</code> y un <code>Category</code> numérico. Se conservan las categorías
+    1&ndash;3; se informa cuántos registros quedaron fuera de ellas o no tenían MD5. Un archivo
+    sin ningún registro así se rechaza</td></tr>
   <tr><td><strong>Usar una reserva de hashes compartida...</strong></td><td>apunta GLEAPP a un
     archivo de reserva en una unidad compartida / de red; todo el equipo lee y escribe la misma
     reserva</td></tr>
@@ -1195,15 +1268,16 @@ deshacer</strong>.</p>
 
 <h3>Línea de comandos</h3>
 <pre><code>gleapp stash                       # totals + file location
-gleapp -c &lt;case dir&gt; stash --add    # add that case's category 1-3 MD5s
+gleapp -c &lt;case dir&gt; stash --add    # add that case's notable-category MD5s
 gleapp stash --export stash.hstash # portable copy  (.csv also works)
 gleapp stash --merge theirs.hstash # fold in a colleague's stash
+gleapp stash --merge-precategorized hashes.json   # MD5s another tool categorized
 gleapp stash --set-path "\\nas\team\stash.hstash"
 gleapp stash --set-path ""         # back to the per-user default
 gleapp stash --clear</code></pre>
-<p>En orden: totales y ubicación del archivo; agregar los MD5 de categoría 1-3 de ese caso;
-copia portátil (también sirve <code>.csv</code>); incorporar la reserva de un colega; usar
-un archivo compartido; volver al predeterminado de usuario; vaciar la reserva.</p>
+<p>En orden: totales y ubicación del archivo; agregar los MD5 de las categorías relevantes
+de ese caso; copia portátil (también sirve <code>.csv</code>); incorporar la reserva de un
+colega; incorporar MD5 que otra herramienta categorizó; usar un archivo compartido; volver al predeterminado de usuario; vaciar la reserva.</p>
 
 <h2 id="formats">13. Manejo de formatos</h2>
 <h3>Qué decodifica GLEAPP</h3>
@@ -1411,7 +1485,7 @@ sus columnas y campos sean siempre los mismos para las herramientas que los leen
   <tr><td>JSON</td><td>los mismos datos, estructurados; también trae el encabezado del caso</td></tr>
   <tr><td>KMZ</td><td>medios geolocalizados para Google Earth / herramientas de mapas: un KML comprimido con una miniatura (o un fotograma clave de video) incluida para cada marcador, así que al hacer clic en un pin se ve la imagen en su ubicación</td></tr>
   <tr><td>Lista MD5</td><td>un hash por fila (también desde la barra de selección / clic derecho)</td></tr>
-  <tr><td>JSON de Project VIC</td><td>el archivo VIC original con su Category / Comments / Tags escritos de vuelta, por MediaID y MD5 (aparece en casos VIC); Uncategorized se escribe como <code>null</code></td></tr>
+  <tr><td>JSON de Project VIC</td><td>el archivo VIC original con su Category y sus Comments escritos de vuelta (Tags y Series quedan como los tenía el archivo), por MediaID y MD5 (aparece en casos VIC); Uncategorized y las categorías que usted agregó se escriben como <code>null</code></td></tr>
   <tr><td>Informe LAVA</td><td>una carpeta de proyecto que abre LAVA: los medios, un mapa de ubicación por cada archivo geolocalizado y un mapa general dibujados sin conexión a partir del mapa base que importó (&sect;19), los fotogramas clave de los videos y las tablas de artefactos. Tarda minutos en lugar de segundos, así que se ejecuta como un trabajo y la barra inferior muestra su avance</td></tr>
 </table>
 <p>Cada parte del diálogo (Qué archivos, Formato, Medios, Mapas, Encabezado del informe,
@@ -1449,6 +1523,8 @@ images</strong> (desenfocar imágenes; activado por defecto, pase el cursor sobr
 miniatura para verla nítida) y <strong>Dark mode</strong> (modo oscuro); ambos recuerdan su
 elección por navegador. Al imprimir se muestran los metadatos de todas las tarjetas y las
 imágenes sin desenfocar, en modo claro.</p>
+<p><strong>Metadatos de ExifTool</strong> (desactivado por defecto, se guarda con el caso): <strong>Incluir metadatos de ExifTool</strong> agrega la lectura de ExifTool de cada archivo a su tarjeta, contraída, agrupada por las categorías marcadas debajo. Un archivo sin nada en las categorías marcadas no recibe ningún bloque. Los archivos aún no leídos se leen durante la exportación, que tarda más y hace el informe más grande. <code>gleapp report --exiftool</code> incluye todas las categorías.</p>
+<p><strong>Credenciales de contenido</strong> (desactivado por defecto, se guarda con el caso): <strong>Incluir credenciales de contenido</strong> agrega la lectura de cada imagen y video a su tarjeta, contraída. Durante la exportación no se lee nada: un archivo no leído dice <em>Not read</em>. <code>gleapp report --c2pa</code> hace lo mismo. El CSV siempre lleva <code>c2pa_credentials</code>, <code>c2pa_ai</code>, <code>c2pa_signer_stated</code>, <code>c2pa_generator</code>, <code>c2pa_source_types</code> y <code>c2pa_actions</code>, y el JSON un objeto <code>c2pa</code> con la lectura completa, para imágenes y videos (<em>Not read</em> y null hasta que se leen). El artefacto <em>Media Files</em> del informe LAVA lleva <em>Content Credentials</em> y <em>AI Declared</em> para cada imagen y video, y un artefacto <em>Content Credentials</em> tiene una fila por manifiesto y por declaración XMP, con la misma disposición que el artefacto C2PA de iLEAPP y ALEAPP; se omite cuando nada de lo leído declaró algo.</p>
 <p>El informe también dibuja sus propios <strong>mapas de ubicación</strong> a partir del
 mapa base activo (&sect;19), si hay uno importado y algún archivo está geolocalizado: un mapa
 general <strong>Locations</strong> cerca del inicio, y un pequeño mapa localizador en cada
@@ -1844,7 +1920,8 @@ contenido ilegal; identifica <em>archivos conocidos</em> (mediante hashes que us
 incluida su propia reserva local de hashes) y muestra <em>señales</em>; la categorización es
 siempre su criterio profesional.</p>
 <p>La <strong>reserva local de hashes</strong> (sección&nbsp;12) contiene solo valores de
-hash MD5, sin contenido, nombres ni rutas de archivos, de archivos que usted categorizó 1–3,
+hash MD5, sin contenido, nombres ni rutas de archivos, de archivos que usted puso en
+categorías relevantes,
 y nunca sale de su equipo salvo que la <strong>exporte</strong> o la apunte a una ubicación
 compartida.</p>
 <p>La traducción de la interfaz también es local: el catálogo de idioma viene con GLEAPP y se
@@ -2051,8 +2128,13 @@ en distintos puntos de montaje) se construye sobre herramientas que
     lee las cachés de medios que las apps de Android mantienen mediante ExoPlayer, une los
     fragmentos de cada elemento en caché y los segmentos de cada flujo DASH, y pone un video y
     su audio en un solo MP4.</li>
+  <li><strong><a href="https://github.com/abrignoni/c2pareader">c2pareader</a></strong>
+    lee las credenciales de contenido (C2PA) y el tipo de origen digital IPTC que declara
+    una imagen o un video, sin verificarlos. iLEAPP y ALEAPP incluyen el mismo archivo. Se
+    llamaba c2paprobe hasta la v0.1.1, la versión que GLEAPP v2026.5.6 registró como su
+    lector.</li>
 </ul>
-<p>Las cuatro tienen licencia MIT, &copy; Alexis&nbsp;Brignoni. La tabla de vistas de
+<p>Las cinco tienen licencia MIT, &copy; Alexis&nbsp;Brignoni. La tabla de vistas de
 almacenamiento de Android de GLEAPP (<code>gleapp/storage_views.py</code>), que sabe que el
 almacenamiento cifrado por credenciales, el cifrado por dispositivo y el compartido nunca se
 pliegan entre sí, está portada de <code>scripts/artifacts/storagePathViews.py</code> de
