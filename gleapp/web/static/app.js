@@ -2613,7 +2613,7 @@ async function liveJob() {
     setTimeout(() => { $("#procBar").style.display = "none"; }, 4000);
     const notes = exported ? exportNotes(j.stats.notes) : "";
     toast(exported
-      ? `Export complete → ${j.stats.report_dir} — click to open` + notes
+      ? i18n.t("Export complete → {dir} — click to open", { dir: j.stats.report_dir }) + notes
       : "Processing complete" + (j.stats && j.stats.processed
         ? ` — ${j.stats.processed.toLocaleString()} files` : ""),
       exported ? (notes ? 15000 : 5000) : 1800,
@@ -2926,7 +2926,7 @@ $("#reportGo").onclick = async () => {
     return;
   }
   const notes = exportNotes(r.notes);
-  toast(`Exported (${r.scope}) → ${r.dir} — click to open` + notes,
+  toast(i18n.t("Exported ({scope:t}) → {dir} — click to open", { scope: i18n.t(r.scope), dir: r.dir }) + notes,
     notes ? 15000 : 5000, () => openFolder(r.dir));
   addReportNotification(r.dir, `Export (${r.scope})`);
 };
@@ -4067,7 +4067,8 @@ async function runVicExport(onlyCategorized) {
   });
   if (r.error) return toast(r.message || "VIC export failed");
   const notes = exportNotes(r.notes);
-  toast("Project VIC file written: " + (r.written[0] || r.dir) + notes, notes ? 15000 : undefined);
+  toast(i18n.t("Project VIC file written: {path}", { path: r.written[0] || r.dir }) + notes,
+    notes ? 15000 : undefined);
 }
 // what an export's writers asked the examiner to know, after its toast's own text
 function exportNotes(notes) {
@@ -4360,7 +4361,7 @@ function wireC2pa(id) {
       `<div class="muted" style="margin-top:6px">${esc(title)}</div>
        <table class="exTable"><tbody>${rows.map(([k, v]) =>
          `<tr><td>${esc(k)}</td><td${C2PA_WORDS.has(k) ? "" : ' translate="no"'}>${esc(v)}</td></tr>`).join("")}</tbody></table>`).join("")
-      + `<div class="muted exFoot" title="${esc(r.ai_rule || "")}">${esc(help)} ${esc(r.caveat || "")}</div>`;
+      + `<div class="muted exFoot" title="${esc(r.ai_rule || "")}">${esc(i18n.t(help))} ${esc(i18n.t(r.caveat || ""))}</div>`;
   };
   box.addEventListener("toggle", () => {
     try { localStorage.setItem(C2PA_OPEN_KEY, box.open ? "1" : "0"); } catch (e) {}
@@ -4737,7 +4738,7 @@ const Region = { choices: [], current: null, afterIntro: null };
 function renderRegionPreview() {
   const r = Region.choices.find(x => x.id === $("#regionSel").value);
   $("#regionCats").innerHTML = r ? r.categories.map(c =>
-    `<li><code>${esc(String(c.code))}</code> ${esc(c.name)}${
+    `<li><code>${esc(String(c.code))}</code> <span translate="no">${esc(c.name)}</span>${
       c.key ? ` <span class="muted">⌨ ${esc(c.key)}</span>` : ""}</li>`).join("") : "";
 }
 function openRegionDlg(ctx, firstRun) {
