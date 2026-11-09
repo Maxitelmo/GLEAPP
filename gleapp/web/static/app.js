@@ -4330,6 +4330,10 @@ function exifKeyRows(hl) {
   return rows;
 }
 const C2PA_OPEN_KEY = "gleapp.c2paOpen";
+// Content Credentials rows whose value is GLEAPP's word (provenance.py) rather than
+// what the file declares, so it follows the interface language; every other value is
+// held back from translation like any metadata
+const C2PA_WORDS = new Set(["Status", "AI declared", "Note"]);
 // The details pane's Content Credentials section: what the read pass kept for this
 // file, grouped as the report card shows it. Nothing is read from here.
 function wireC2pa(id) {
@@ -4355,7 +4359,7 @@ function wireC2pa(id) {
     body.innerHTML = (r.groups || []).map(([title, rows]) =>
       `<div class="muted" style="margin-top:6px">${esc(title)}</div>
        <table class="exTable"><tbody>${rows.map(([k, v]) =>
-         `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</tbody></table>`).join("")
+         `<tr><td>${esc(k)}</td><td${C2PA_WORDS.has(k) ? "" : ' translate="no"'}>${esc(v)}</td></tr>`).join("")}</tbody></table>`).join("")
       + `<div class="muted exFoot" title="${esc(r.ai_rule || "")}">${esc(help)} ${esc(r.caveat || "")}</div>`;
   };
   box.addEventListener("toggle", () => {
@@ -4390,8 +4394,8 @@ function wireExifTool(id) {
     box.querySelector("summary").textContent = `Metadata (ExifTool) · ${fields.length} fields`;
     body.classList.remove("muted");
     const fieldRow = (x, withCat) => `<tr${x.family === "Composite" ? ' class="exCalc" title="Calculated by ExifTool, not stored in the file"' : ""}>
-        <td title="${esc(x.group)}">${esc(x.tag)}${withCat ? ` <span class="exBadge">${esc(EXIF_TAB_SHORT[x.category] || x.category)}</span>` : ""}</td>
-        <td>${esc(x.value)}</td></tr>`;
+        <td title="${esc(x.group)}"><span translate="no">${esc(x.tag)}</span>${withCat ? ` <span class="exBadge">${esc(EXIF_TAB_SHORT[x.category] || x.category)}</span>` : ""}</td>
+        <td translate="no">${esc(x.value)}</td></tr>`;
     const tabs = [{ key: "key", short: "Key", label: "Key fields", help: "The fields examiners usually look for first, as stored in the file." },
       ...cats.map(c => ({ key: c.key, short: EXIF_TAB_SHORT[c.key] || c.label, label: c.label, help: c.help || "" }))];
     let current = exifTabRemembered();
@@ -4416,7 +4420,7 @@ function wireExifTool(id) {
         html = hits.map(x => fieldRow(x, true)).join("");
         msg = hits.length ? `${hits.length} matching field${hits.length === 1 ? "" : "s"}, from every tab` : "No field matches.";
       } else if (current === "key") {
-        html = keyRows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+        html = keyRows.map(([k, v]) => `<tr><td>${esc(k)}</td><td translate="no">${esc(v)}</td></tr>`).join("");
         msg = keyRows.length ? "" : "None of the key fields are in this file. The other tabs have everything ExifTool read.";
       } else {
         const c = cats.find(c => c.key === current);

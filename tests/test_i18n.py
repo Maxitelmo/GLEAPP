@@ -183,5 +183,10 @@ def test_evidence_is_held_back_from_translation():
                  '<span class="catnow" translate="no"',            # ... and category
                  '<span class="flagchip" translate="no">',         # ... and flags
                  '<td class="mono" translate="no">',               # ... and hashes
-                 '<option translate="no">'):                       # the Source filter
+                 '<option translate="no">',                        # the Source filter
+                 '<td translate="no">${esc(x.value)}</td>',        # ExifTool's values
+                 '<span translate="no">${esc(x.tag)}</span>',      # ... and tag names
+                 '<td translate="no">${esc(v)}</td>'):             # the Key tab's values
         assert held in js, held
+    # a Content Credentials value is held back unless it is GLEAPP's own status word
+    assert '<td${C2PA_WORDS.has(k) ? "" : \' translate="no"\'}>${esc(v)}</td>' in js
